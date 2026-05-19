@@ -1,13 +1,22 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-ARG POSTGRES_IMAGE=postgres:17.7@sha256:2006493727bd5277eece187319af1ef82b4cf82cf4fc1ed00da0775b646ac2a4
+ARG GOLANG_IMAGE=golang:1.25.10-trixie@sha256:0d928e19e1741b3625639cb870f69c0397c8fa99dcb7757860617440beb4a05a
+ARG POSTGRES_IMAGE=postgres:17.10-trixie@sha256:538bdb8c6b278f2f09070a4d79f04a83363a795ed23ec0d92d6b70cabc398eae
+FROM ${GOLANG_IMAGE} AS gosu-build
+RUN /usr/local/go/bin/go install github.com/tianon/gosu@v0.0.0-20250923190938-6456aaa0f3c8
+
 FROM ${POSTGRES_IMAGE}
 ARG PG_MAJOR=17
+
+# Replace the upstream gosu binary with one built by a Go toolchain containing
+# the current stdlib security fixes.
+COPY --from=gosu-build /go/bin/gosu /usr/local/bin/gosu
 
 # Install pg_cron for the specified Postgres major version
 RUN set -eux; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
         postgresql-${PG_MAJOR}-cron; \
     rm -rf /var/lib/apt/lists/*

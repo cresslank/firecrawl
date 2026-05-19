@@ -1,0 +1,18 @@
+packages:
+  - "."
+
+minimumReleaseAge: 720 # 12 hours
+
+onlyBuiltDependencies:
+  - esbuild
+
+allowBuilds:
+  esbuild: true
+
+overrides:
+  "path-to-regexp@<8.4.0": ">=8.4.0"
+  "tar@<7.5.11": ">=7.5.11"
+  "glob@>=10.2.0 <10.5.0": ">=10.5.0"
+  "minimatch@<10.2.3": ">=10.2.3"
+  "picomatch@<4.0.4": ">=4.0.4"
+  "cross-spawn@<7.0.5": ">=7.0.5"
