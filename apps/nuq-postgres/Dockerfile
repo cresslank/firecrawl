@@ -1,7 +1,9 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-FROM postgres:${PG_MAJOR}
+ARG POSTGRES_IMAGE=postgres:17.7@sha256:2006493727bd5277eece187319af1ef82b4cf82cf4fc1ed00da0775b646ac2a4
+FROM ${POSTGRES_IMAGE}
+ARG PG_MAJOR=17
 
 # Install pg_cron for the specified Postgres major version
 RUN set -eux; \

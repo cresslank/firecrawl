@@ -3,7 +3,7 @@ name: firecrawl
 x-common-service: &common-service
   # NOTE: If you don't want to build the service locally,
   # comment out the build: statement and uncomment the image: statement
-  # image: ghcr.io/firecrawl/firecrawl
+  # image: ghcr.io/firecrawl/firecrawl:<tag>@sha256:<digest>
   build: apps/api
 
   ulimits:
@@ -60,7 +60,7 @@ services:
   playwright-service:
     # NOTE: If you don't want to build the service locally,
     # comment out the build: statement and uncomment the image: statement
-    # image: ghcr.io/firecrawl/playwright-service:latest
+    # image: ghcr.io/firecrawl/playwright-service:<tag>@sha256:<digest>
     build: apps/playwright-service-ts
     environment:
       PORT: 3000
@@ -119,8 +119,8 @@ services:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
     # uncomment the Valkey statement and comment out the Redis statement.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    image: redis:alpine
-    # image: valkey/valkey:alpine
+    image: redis:8.4.0-alpine@sha256:4eec4565e45aa0b3966554c866bc73211e281b0b3d89fe9a33c982e6faca809d
+    # image: valkey/valkey:<tag>-alpine@sha256:<digest>
 
     networks:
       - backend
@@ -133,7 +133,7 @@ services:
         compress: "true"
     
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     networks:
       - backend
     command: rabbitmq-server
@@ -153,7 +153,7 @@ services:
   nuq-postgres:
     # NOTE: If you don't want to build the image locally,
     # comment out the build: statement and uncomment the image: statement
-    # image: ghcr.io/firecrawl/nuq-postgres:latest
+    # image: ghcr.io/firecrawl/nuq-postgres:<tag>@sha256:<digest>
     build: apps/nuq-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
