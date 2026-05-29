@@ -39,6 +39,7 @@ const configSchema = z.object({
   FIRECRAWL_DASHBOARD_URL: z.url().default("https://www.firecrawl.dev"),
   SUPPORT_AGENT_URL: z.string().url().optional(),
   SUPPORT_AGENT_VERCEL_BYPASS_SECRET: z.string().optional(),
+  RESEARCH_PROXY_URL: z.string().url().optional(),
 
   // Express
   EXPRESS_TRUST_PROXY: z.coerce.number().optional(),
@@ -52,10 +53,6 @@ const configSchema = z.object({
   LLAMAPARSE_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   AUTUMN_SECRET_KEY: z.string().optional(),
-  AUTUMN_CHECK_ENABLED: z.string().optional(),
-  AUTUMN_CHECK_EXPERIMENT_PERCENT: z.coerce.number().default(100),
-  AUTUMN_EXPERIMENT: z.string().optional(),
-  AUTUMN_EXPERIMENT_PERCENT: z.coerce.number().default(100),
   AUTUMN_REQUEST_TRACK_EXPERIMENT: z.string().optional(),
   AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: z.coerce.number().default(100),
   RESEND_API_KEY: z.string().optional(),
@@ -72,6 +69,11 @@ const configSchema = z.object({
   // OAuth token introspection
   OAUTH_INTROSPECT_URL: z.string().optional(),
   OAUTH_INTROSPECT_SECRET: z.string().optional(),
+
+  // Agent auth discovery (RFC 9728 WWW-Authenticate on 401)
+  AGENT_AUTH_RESOURCE_METADATA_URL: z
+    .url()
+    .default("https://www.firecrawl.dev/.well-known/oauth-protected-resource"),
 
   // Database & Storage
   POSTGRES_HOST: z.string().default("localhost"),
@@ -283,6 +285,8 @@ const configSchema = z.object({
   AVGRAB_SERVICE_URL: z.string().optional(),
 
   NUQ_PREFETCH_WORKER_HEARTBEAT_URL: z.string().optional(),
+
+  ZDRCLEANER_HEARTBEAT_URL: z.string().optional(),
 });
 
 export const config = configSchema.parse(process.env);
