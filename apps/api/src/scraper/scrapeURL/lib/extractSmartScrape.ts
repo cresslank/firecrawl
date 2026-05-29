@@ -88,6 +88,18 @@ const multiSmartScrapeWrapperSchemaDefinition = {
  * @param logger Winston logger instance.
  * @returns An object containing the schema to use for the LLM call and whether wrapping occurred.
  */
+function buildSmartScrapeWrapperPrompt(userPrompt: string | undefined): string {
+  const wrapperInstructions =
+    "Return one valid JSON object with exactly these top-level keys: " +
+    "extractedData, shouldUseSmartscrape, smartscrape_reasoning, smartscrape_prompt. " +
+    "Set extractedData to the requested extraction object. " +
+    "Set shouldUseSmartscrape to false unless the requested data is missing from the provided markdown and user-like interactions are required. " +
+    "If shouldUseSmartscrape is false, smartscrape_reasoning and smartscrape_prompt must be null. " +
+    "Do not omit any required key. Do not add markdown fences or commentary.";
+
+  return userPrompt ? `${wrapperInstructions}\n\n${userPrompt}` : wrapperInstructions;
+}
+
 function prepareSmartScrapeSchema(
   originalSchema: any | z.ZodTypeAny | undefined,
   logger: Logger,
@@ -338,7 +350,11 @@ export async function extractData({
   const { schemaToUse } = prepareSmartScrapeSchema(schema, logger, isSingleUrl);
   const extractOptionsNewSchema = {
     ...extractOptions,
-    options: { ...extractOptions.options, schema: schemaToUse },
+    options: {
+      ...extractOptions.options,
+      schema: schemaToUse,
+      prompt: buildSmartScrapeWrapperPrompt(extractOptions.options.prompt),
+    },
   };
   // console.log("schema", schema);
   // console.log("schemaToUse", schemaToUse);
