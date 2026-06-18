@@ -23,11 +23,15 @@ import { isSelfHosted } from "../lib/deployment";
 import { validate as isUuid } from "uuid";
 
 import { config } from "../config";
-import { supabase_service } from "../services/supabase";
-import { autumnService } from "../services/autumn/autumn.service";
+import { getAgentFreeRequestsLeft } from "../db/rpc";
+import {
+  autumnService,
+  CREDITS_FEATURE_ID,
+} from "../services/autumn/autumn.service";
 
 export function checkCreditsMiddleware(
   _minimum?: number,
+  featureId: string = CREDITS_FEATURE_ID,
 ): (req: RequestWithAuth, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     let minimum = _minimum;
@@ -99,22 +103,16 @@ export function checkCreditsMiddleware(
 
       if (req.path.startsWith("/agent")) {
         if (config.USE_DB_AUTHENTICATION) {
-          const { data, error: freeRequestError } = await supabase_service.rpc(
-            "get_agent_free_requests_left",
-            {
-              i_team_id: req.auth.team_id,
-            },
-          );
-
-          if (freeRequestError) {
+          try {
+            const data = await getAgentFreeRequestsLeft(req.auth.team_id);
+            if (data?.[0]?.free_requests_left !== 0) {
+              return next();
+            }
+          } catch (freeRequestError) {
             logger.warn("Failed to get agent free requests left", {
               error: freeRequestError,
               teamId: req.auth.team_id,
             });
-          } else {
-            if (data?.[0]?.free_requests_left !== 0) {
-              return next();
-            }
           }
         }
       }
@@ -128,6 +126,7 @@ export function checkCreditsMiddleware(
           source: "checkCreditsMiddleware",
           path: req.path,
         },
+        featureId,
       });
 
       // Autumn is the source of truth for credits. If it's unavailable
@@ -197,6 +196,7 @@ export function checkCreditsMiddleware(
 
 export function authMiddleware(
   rateLimiterMode: RateLimiterMode,
+  options: { allowKeyless?: boolean } = {},
 ): (req: RequestWithMaybeAuth, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     (async () => {
@@ -212,11 +212,18 @@ export function authMiddleware(
       //   currentRateLimiterMode = RateLimiterMode.ScrapeAgentPreview;
       // }
 
-      const auth = await authenticateUser(req, res, currentRateLimiterMode);
+      const auth = await authenticateUser(
+        req,
+        res,
+        currentRateLimiterMode,
+        options,
+      );
 
       if (!auth.success) {
         if (!res.headersSent) {
-          if (auth.status === 401) applyAgentAuthDiscoveryHeader(res);
+          if (auth.status === 401 || auth.agentAuthDiscovery) {
+            applyAgentAuthDiscoveryHeader(res);
+          }
           return res
             .status(auth.status)
             .json({ success: false, error: auth.error });

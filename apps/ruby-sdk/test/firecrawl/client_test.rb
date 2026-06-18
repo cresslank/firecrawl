@@ -15,14 +15,14 @@ class ClientTest < Minitest::Test
   # CLIENT INITIALIZATION
   # ================================================================
 
-  def test_raises_when_no_api_key
+  def test_allows_no_api_key_for_keyless_endpoints
     ENV.delete("FIRECRAWL_API_KEY")
-    assert_raises(Firecrawl::FirecrawlError) { Firecrawl::Client.new }
+    assert_instance_of Firecrawl::Client, Firecrawl::Client.new
   end
 
-  def test_raises_when_whitespace_only_api_key
+  def test_allows_whitespace_only_api_key_for_keyless_endpoints
     ENV.delete("FIRECRAWL_API_KEY")
-    assert_raises(Firecrawl::FirecrawlError) { Firecrawl::Client.new(api_key: "   ") }
+    assert_instance_of Firecrawl::Client, Firecrawl::Client.new(api_key: "   ")
   end
 
   def test_raises_when_api_url_not_http
@@ -69,7 +69,7 @@ class ClientTest < Minitest::Test
   def test_scrape_basic
     stub_request(:post, "#{BASE_URL}/v2/scrape")
       .with(
-        body: { url: "https://example.com" }.to_json,
+        body: { url: "https://example.com", origin: "ruby-sdk@#{Firecrawl::VERSION}" }.to_json,
         headers: { "Authorization" => "Bearer #{API_KEY}", "Content-Type" => "application/json" }
       )
       .to_return(
@@ -102,6 +102,93 @@ class ClientTest < Minitest::Test
 
   def test_scrape_raises_on_nil_url
     assert_raises(ArgumentError) { @client.scrape(nil) }
+  end
+
+  def test_scrape_with_product_format
+    stub_request(:post, "#{BASE_URL}/v2/scrape")
+      .to_return(
+        status: 200,
+        body: JSON.generate(
+          data: {
+            markdown: "# Widget",
+            product: {
+              title: "Acme Widget",
+              brand: "Acme",
+              category: "Gadgets",
+              url: "https://example.com/widget",
+              description: "A fine widget.",
+              variants: [
+                {
+                  id: "v1",
+                  sku: "ACME-1",
+                  title: "Large",
+                  values: { size: "L" },
+                  price: { amount: 2199, currency: "USD" },
+                  sale: { originalPrice: { amount: 2999, currency: "USD", formatted: "$29.99" } },
+                  availability: { inStock: true, text: "In stock" },
+                  images: [{ url: "https://example.com/v1.jpg", alt: "Widget" }],
+                },
+                {
+                  id: "v2",
+                  title: "Small",
+                  values: { size: "S" },
+                },
+              ],
+            },
+          }
+        ),
+        headers: { "Content-Type" => "application/json" }
+      )
+
+    doc = @client.scrape("https://example.com/widget")
+    product = doc.product
+    assert_instance_of Firecrawl::Models::ProductProfile, product
+    assert_equal "Acme Widget", product.title
+    assert_equal "Acme", product.brand
+    assert_equal "Gadgets", product.category
+    assert_equal "https://example.com/widget", product.url
+    assert_equal "A fine widget.", product.description
+
+    assert_equal 2, product.variants.size
+    variant = product.variants.first
+    assert_equal "v1", variant.id
+    assert_equal "ACME-1", variant.sku
+    assert_equal "Large", variant.title
+    assert_equal({ "size" => "L" }, variant.values)
+
+    assert_equal 2199, variant.price.amount
+    assert_equal "USD", variant.price.currency
+
+    assert_equal 2999, variant.sale.original_price.amount
+    assert_equal "$29.99", variant.sale.original_price.formatted
+
+    assert_equal true, variant.availability.in_stock
+    assert_equal "In stock", variant.availability.text
+
+    assert_equal 1, variant.images.size
+    assert_equal "https://example.com/v1.jpg", variant.images.first.url
+    assert_equal "Widget", variant.images.first.alt
+
+    # Availability is always present; sale/price/images are optional.
+    bare = product.variants.last
+    assert_equal "v2", bare.id
+    assert_nil bare.price
+    assert_nil bare.sale
+    refute_nil bare.availability
+    assert_equal false, bare.availability.in_stock
+    assert_empty bare.images
+  end
+
+  def test_scrape_without_product_format_leaves_product_nil
+    stub_request(:post, "#{BASE_URL}/v2/scrape")
+      .to_return(
+        status: 200,
+        body: JSON.generate(data: { markdown: "# Hi" }),
+        headers: { "Content-Type" => "application/json" }
+      )
+
+    doc = @client.scrape("https://example.com")
+    assert_nil doc.product
   end
 
   # ================================================================
@@ -447,7 +534,8 @@ class ClientTest < Minitest::Test
       only_main_content: true,
       wait_for: 1000,
       mobile: false,
-      proxy: "stealth"
+      proxy: "stealth",
+      redact_pii: true
     )
     h = opts.to_h
     assert_equal ["markdown", "html"], h["formats"]
@@ -455,6 +543,7 @@ class ClientTest < Minitest::Test
     assert_equal 1000, h["waitFor"]
     assert_equal false, h["mobile"]
     assert_equal "stealth", h["proxy"]
+    assert_equal true, h["redactPII"]
     assert_equal false, h["skipTlsVerification"] # defaults to false
     refute h.key?("timeout") # nil values should be omitted
   end
@@ -663,13 +752,15 @@ class ClientTest < Minitest::Test
       formats: ["markdown"],
       only_main_content: true,
       timeout: 30000,
-      proxy: "auto"
+      proxy: "auto",
+      redact_pii: true
     )
     h = opts.to_h
     assert_equal ["markdown"], h["formats"]
     assert_equal true, h["onlyMainContent"]
     assert_equal 30000, h["timeout"]
     assert_equal "auto", h["proxy"]
+    assert_equal true, h["redactPII"]
   end
 
   def test_parse_options_rejects_unsupported_format
@@ -681,6 +772,12 @@ class ClientTest < Minitest::Test
   def test_parse_options_rejects_video_format
     assert_raises(ArgumentError) do
       Firecrawl::Models::ParseOptions.new(formats: ["video"])
+    end
+  end
+
+  def test_parse_options_rejects_product_format
+    assert_raises(ArgumentError) do
+      Firecrawl::Models::ParseOptions.new(formats: ["product"])
     end
   end
 

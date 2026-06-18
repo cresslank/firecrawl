@@ -27,10 +27,20 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     ca-certificates \
     cmake \
+    curl \
     git \
     pkg-config \
     python3 \
     && rm -rf /var/lib/apt/lists/*
+
+# FoundationDB client library (libfdb_c + headers), needed by the
+# `foundationdb` npm package at install time on arches without prebuilds.
+ARG FDB_VERSION=7.3.63
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
+    curl -fsSL -o /tmp/fdb-clients.deb \
+      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+    dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
 # Copy a pinned Rust toolchain instead of running curl | sh during the build.
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -62,12 +72,22 @@ FROM base AS runtime
 # Install runtime dependencies
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     --no-install-recommends \
+    ca-certificates \
+    curl \
     git \
     procps \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
     && rm -rf /var/lib/apt/lists/*
+
+# FoundationDB client library (libfdb_c + fdbcli)
+ARG FDB_VERSION=7.3.63
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
+    curl -fsSL -o /tmp/fdb-clients.deb \
+      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+    dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
 EXPOSE 8080
 WORKDIR /app

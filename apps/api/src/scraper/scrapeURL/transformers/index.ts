@@ -10,15 +10,17 @@ import {
   performSummary,
   performCleanContent,
 } from "./llmExtract";
+import { performDeterministicJson } from "./deterministicJson";
 import { performQuery } from "./query";
-import { uploadScreenshot } from "./uploadScreenshot";
 import { removeBase64Images } from "./removeBase64Images";
 import { performAgent } from "./agent";
 import { performAttributes } from "./performAttributes";
 
 import { deriveDiff } from "./diff";
 import { fetchAudio } from "./audio";
+import { fetchProduct } from "./product";
 import { fetchVideo } from "./video";
+import { performRedactPII } from "./redactPII";
 import { useIndex, useSearchIndex } from "../../../services/index";
 import { sendDocumentToIndex } from "../engines/index/index";
 import { sendDocumentToSearchIndex } from "./sendToSearchIndex";
@@ -85,16 +87,22 @@ async function deriveMarkdownFromHTML(
   // - json format requires markdown (for LLM extraction)
   // - summary format requires markdown (for summarization)
   // - question/highlights/query formats require markdown (for page-level answers)
+  // - redactPII needs markdown as its source text (spans are markdown char offsets)
   const hasMarkdown = hasFormatOfType(meta.options.formats, "markdown");
   const hasChangeTracking = hasFormatOfType(
     meta.options.formats,
     "changeTracking",
   );
-  const hasJson = hasFormatOfType(meta.options.formats, "json");
+  // deterministicJson populates document.json just like json, so treat it the
+  // same here (derive markdown for it; keep the field it produced).
+  const hasJson =
+    hasFormatOfType(meta.options.formats, "json") ||
+    hasFormatOfType(meta.options.formats, "deterministicJson");
   const hasSummary = hasFormatOfType(meta.options.formats, "summary");
   const hasQuestion = hasFormatOfType(meta.options.formats, "question");
   const hasHighlights = hasFormatOfType(meta.options.formats, "highlights");
   const hasQuery = hasFormatOfType(meta.options.formats, "query");
+  const hasRedactPII = !!meta.options.redactPII;
   if (
     !hasMarkdown &&
     !hasChangeTracking &&
@@ -103,6 +111,7 @@ async function deriveMarkdownFromHTML(
     !hasQuestion &&
     !hasHighlights &&
     !hasQuery &&
+    !hasRedactPII &&
     !meta.options.onlyCleanContent
   ) {
     return document;
@@ -318,10 +327,15 @@ function coerceFieldsToFormats(meta: Meta, document: Document): Document {
     meta.options.formats,
     "changeTracking",
   );
-  const hasJson = hasFormatOfType(meta.options.formats, "json");
+  // deterministicJson populates document.json just like json, so treat it the
+  // same here (derive markdown for it; keep the field it produced).
+  const hasJson =
+    hasFormatOfType(meta.options.formats, "json") ||
+    hasFormatOfType(meta.options.formats, "deterministicJson");
   const hasScreenshot = hasFormatOfType(meta.options.formats, "screenshot");
   const hasSummary = hasFormatOfType(meta.options.formats, "summary");
   const hasBranding = hasFormatOfType(meta.options.formats, "branding");
+  const hasProduct = hasFormatOfType(meta.options.formats, "product");
   const hasQuestionFormat = hasFormatOfType(meta.options.formats, "question");
   const hasHighlightsFormat = hasFormatOfType(
     meta.options.formats,
@@ -476,6 +490,13 @@ function coerceFieldsToFormats(meta: Meta, document: Document): Document {
     );
   }
 
+  if (!hasProduct && document.product !== undefined) {
+    meta.logger.warn(
+      "Removed product from Document because it wasn't in formats -- this indicates the engine returned unexpected data.",
+    );
+    delete document.product;
+  }
+
   const hasAudio = hasFormatOfType(meta.options.formats, "audio");
   if (!hasAudio && document.audio !== undefined) {
     delete document.audio;
@@ -488,7 +509,14 @@ function coerceFieldsToFormats(meta: Meta, document: Document): Document {
   const hasVideo = hasFormatOfType(meta.options.formats, "video");
   if (!hasVideo && document.video !== undefined) {
     delete document.video;
-  } else if (hasVideo && document.video === undefined) {
+  }
+  if (!hasVideo && document.videos !== undefined) {
+    delete document.videos;
+  } else if (
+    hasVideo &&
+    document.video === undefined &&
+    document.videos === undefined
+  ) {
     meta.logger.warn(
       "Request had format: video, but there was no video field in the result.",
     );
@@ -553,14 +581,16 @@ const transformerStack: Transformer[] = [
   deriveHTMLFromRawHTML,
   deriveMarkdownFromHTML,
   performCleanContent,
+  performRedactPII,
   deriveLinksFromHTML,
   deriveImagesFromHTML,
   deriveBrandingFromActions,
   deriveMetadataFromRawHTML,
-  uploadScreenshot,
+  fetchProduct,
   ...(useIndex ? [sendDocumentToIndex] : []),
   ...(useSearchIndex ? [sendDocumentToSearchIndex] : []), // Add to search index for real-time search
   performLLMExtract,
+  performDeterministicJson,
   performSummary,
   performQuery,
   performAttributes,

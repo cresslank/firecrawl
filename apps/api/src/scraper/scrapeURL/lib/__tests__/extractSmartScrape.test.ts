@@ -1,30 +1,31 @@
+import type { Mock } from "vitest";
 import { extractData } from "../extractSmartScrape";
 import { generateCompletions } from "../../transformers/llmExtract";
 
-jest.mock("../../transformers/llmExtract", () => ({
-  generateCompletions: jest.fn(),
-  generateSchemaFromPrompt: jest.fn(),
+vi.mock("../../transformers/llmExtract", () => ({
+  generateCompletions: vi.fn(),
+  generateSchemaFromPrompt: vi.fn(),
 }));
 
-jest.mock("../smartScrape", () => ({
-  smartScrape: jest.fn(),
+vi.mock("../smartScrape", () => ({
+  smartScrape: vi.fn(),
 }));
 
-jest.mock("../../../../lib/html-to-markdown", () => ({
-  parseMarkdown: jest.fn(),
+vi.mock("../../../../lib/html-to-markdown", () => ({
+  parseMarkdown: vi.fn(),
 }));
 
-jest.mock("../../../../lib/generic-ai", () => ({
-  getModel: jest.fn(),
+vi.mock("../../../../lib/generic-ai", () => ({
+  getModel: vi.fn(),
 }));
 
 describe("extractData SmartScrape wrapper prompt", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it("tells the model to include all SmartScrape wrapper fields when schema is wrapped", async () => {
-    (generateCompletions as jest.Mock).mockResolvedValue({
+    (generateCompletions as Mock).mockResolvedValue({
       extract: {
         extractedData: { title: "Example Domain" },
         shouldUseSmartscrape: false,
@@ -38,9 +39,9 @@ describe("extractData SmartScrape wrapper prompt", () => {
     await extractData({
       extractOptions: {
         logger: {
-          info: jest.fn(),
-          warn: jest.fn(),
-          error: jest.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
         } as any,
         options: {
           prompt: "Extract the page title from this page.",
@@ -65,7 +66,7 @@ describe("extractData SmartScrape wrapper prompt", () => {
       metadata: { teamId: "test-team" },
     });
 
-    const call = (generateCompletions as jest.Mock).mock.calls[0][0];
+    const call = (generateCompletions as Mock).mock.calls[0][0];
     expect(call.options.prompt).toContain(
       "Return one valid JSON object with exactly these top-level keys",
     );

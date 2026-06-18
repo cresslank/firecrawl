@@ -262,6 +262,80 @@ class BrandingProfile(BaseModel):
     personality: Optional[Dict[str, Any]] = None
 
 
+class ProductPrice(BaseModel):
+    """A monetary price for a product or variant."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    amount: float
+    currency: Optional[str] = None
+    formatted: Optional[str] = None
+
+
+class ProductAvailability(BaseModel):
+    """Availability information for a product or variant."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    in_stock: bool = Field(alias="inStock")
+    text: Optional[str] = None
+
+
+class ProductImage(BaseModel):
+    """An image associated with a product or variant."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    url: str
+    alt: Optional[str] = None
+
+
+class ProductSale(BaseModel):
+    """Sale information for a variant, holding the pre-sale price."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    original_price: ProductPrice = Field(alias="originalPrice")
+
+
+class ProductVariant(BaseModel):
+    """A purchasable variant of a product (e.g. a size/color combination)."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    id: Optional[str] = None
+    sku: Optional[str] = None
+    title: Optional[str] = None
+    values: Optional[Dict[str, Any]] = None
+    price: Optional[ProductPrice] = None
+    sale: Optional[ProductSale] = None
+    availability: ProductAvailability
+    images: Optional[List[ProductImage]] = None
+
+
+class ProductProfile(BaseModel):
+    """Structured product information extracted from a website."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    title: str
+    brand: Optional[str] = None
+    category: Optional[str] = None
+    url: str
+    description: Optional[str] = None
+    variants: List[ProductVariant] = Field(default_factory=list)
+
+
+RedactPIIEntity = Literal[
+    "PERSON",
+    "EMAIL",
+    "PHONE",
+    "LOCATION",
+    "FINANCIAL",
+    "SECRET",
+]
+
+
 class Document(BaseModel):
     """A scraped document."""
 
@@ -282,6 +356,7 @@ class Document(BaseModel):
     warning: Optional[str] = None
     change_tracking: Optional[Dict[str, Any]] = None
     branding: Optional[BrandingProfile] = None
+    product: Optional[ProductProfile] = None
 
     @property
     def metadata_typed(self) -> DocumentMetadata:
@@ -405,6 +480,7 @@ FormatString = Literal[
     "json",
     "attributes",
     "branding",
+    "product",
     "query",
     "audio",
     "video",
@@ -553,6 +629,25 @@ class ScrapeFormats(BaseModel):
         return normalized_formats
 
 
+class RedactPIIOptions(BaseModel):
+    """Tuning options for the PII redaction step."""
+
+    # accurate (default): model-only. Best precision, cleanest output.
+    # aggressive: model + Presidio + spaCy. Higher recall, lower precision.
+    # fast: Presidio only, no model call. Lower F1, ~2x throughput.
+    mode: Optional[Literal["accurate", "aggressive", "fast"]] = None
+    # Restrict redaction to these entity buckets. Unset means all entities.
+    entities: Optional[List[RedactPIIEntity]] = None
+    # tag (default): replace spans with `<KIND>` placeholders.
+    # mask: replace spans with `*` of equal length.
+    # remove: drop span characters entirely.
+    replace_style: Optional[Literal["tag", "mask", "remove"]] = Field(
+        default=None, alias="replaceStyle"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class ScrapeOptions(BaseModel):
     """Options for scraping operations."""
 
@@ -591,8 +686,13 @@ class ScrapeOptions(BaseModel):
     min_age: Optional[int] = None
     store_in_cache: Optional[bool] = None
     lockdown: Optional[bool] = None
+    redact_pii: Optional[Union[bool, RedactPIIOptions]] = Field(
+        default=None, alias="redactPII"
+    )
     profile: Optional[Dict[str, Any]] = None
     integration: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
 
     @field_validator("formats")
     @classmethod
@@ -1124,6 +1224,7 @@ class BrowserExecuteResponse(BaseModel):
     """Response from executing code in a browser session."""
 
     success: bool
+    cdp_url: Optional[str] = None
     live_view_url: Optional[str] = None
     interactive_live_view_url: Optional[str] = None
     output: Optional[str] = None
