@@ -15,21 +15,6 @@ const emptyStringAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
 const emptyStringAsDefault = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess(value => (value === "" ? undefined : value), schema);
 
-// Ethereum address schema: validates 0x followed by 40 hex characters
-const ethereumAddress = z
-  .string()
-  .transform(s => s.trim())
-  .pipe(
-    z.union([
-      z.literal(""), // Allow empty string (treated as undefined below)
-      z
-        .string()
-        .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address format"),
-    ]),
-  )
-  .transform(s => (s === "" ? undefined : (s as `0x${string}`)))
-  .optional();
-
 /* Schema */
 const configSchema = z.object({
   // Application
@@ -73,8 +58,6 @@ const configSchema = z.object({
   LLAMAPARSE_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   AUTUMN_SECRET_KEY: z.string().optional(),
-  AUTUMN_REQUEST_TRACK_EXPERIMENT: z.string().optional(),
-  AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: z.coerce.number().default(100),
   RESEND_API_KEY: z.string().optional(),
   PREVIEW_TOKEN: z.string().optional(),
   SEARCH_PREVIEW_TOKEN: z.string().optional(),
@@ -139,6 +122,11 @@ const configSchema = z.object({
   GCS_FIRE_ENGINE_BUCKET_NAME: z.string().optional(),
   GCS_INDEX_BUCKET_NAME: z.string().optional(),
   GCS_MEDIA_BUCKET_NAME: z.string().optional(),
+  GCS_SCREENSHOT_RESIGN_BEFORE: emptyStringAsUndefined(z.string().datetime()),
+  GCS_PARSE_UPLOAD_BUCKET_NAME: z.string().optional(),
+  PARSE_UPLOAD_STORAGE_DRIVER: z.enum(["local", "gcs"]).optional(),
+  PARSE_UPLOAD_REF_SECRET: emptyStringAsUndefined(z.string().trim().min(1)),
+  PARSE_UPLOAD_PUBLIC_BASE_URL: z.string().url().optional(),
 
   // ClickHouse (Search Analytics)
   CLICKHOUSE_ANALYTICS_URL: z.string().optional(),
@@ -189,6 +177,7 @@ const configSchema = z.object({
   NUQ_WORKER_COUNT: z.coerce.number().default(5),
   NUQ_PREFETCH_WORKER_PORT: z.coerce.number().default(3011).catch(3011), // todo: investigate why .catch is needed
   NUQ_RECONCILER_WORKER_PORT: z.coerce.number().default(3012).catch(3012),
+  CCLOG_WORKER_PORT: z.coerce.number().default(3013).catch(3013),
   EXTRACT_WORKER_PORT: z.coerce.number().default(3004),
   NUQ_WAIT_MODE: z.string().optional(),
 
@@ -242,6 +231,26 @@ const configSchema = z.object({
   SLACK_WEBHOOK_URL: z.string().optional(),
   SLACK_ADMIN_WEBHOOK_URL: z.string().optional(),
   DISABLE_WEBHOOK_DELIVERY: z.stringbool().optional(),
+
+  // Slack integration ("Add to Slack" for monitor notifications + /monitor
+  // slash command). Credentials come from the Firecrawl Slack app.
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
+  // Bot scopes requested during install. Override only if the Slack app manifest
+  // changes; keep in sync with slack-app-manifest.json.
+  SLACK_OAUTH_SCOPES: z
+    .string()
+    .default(
+      "chat:write,chat:write.public,commands,channels:read,groups:read,team:read,incoming-webhook",
+    ),
+  // Absolute URL Slack redirects back to after authorize. Must exactly match a
+  // Redirect URL configured on the Slack app (e.g.
+  // https://api.firecrawl.dev/v2/slack/oauth/callback).
+  SLACK_OAUTH_REDIRECT_URL: z.string().optional(),
+  // 32-byte key (hex or base64) used to AES-256-GCM encrypt stored bot tokens.
+  // If unset, tokens are stored with a `plain:` prefix (self-hosted only).
+  SLACK_TOKEN_ENCRYPTION_KEY: z.string().optional(),
   ALLOW_LOCAL_WEBHOOKS: z.stringbool().optional(),
   WEBHOOK_USE_RABBITMQ: z.stringbool().optional(),
 
@@ -281,12 +290,6 @@ const configSchema = z.object({
   // Indexing
   BACKGROUND_INDEX_TEAM_ID: z.string().optional(),
   PRECRAWL_TEAM_ID: z.string().optional(),
-
-  // Payment (x402)
-  X402_ENDPOINT_PRICE_USD: z.string().optional(),
-  X402_NETWORK: z.string().optional(),
-  X402_PAY_TO_ADDRESS: ethereumAddress,
-  X402_FACILITATOR_URL: z.string().url().optional(),
 
   // System
   MAX_CPU: z.coerce.number().default(0.8),

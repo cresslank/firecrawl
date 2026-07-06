@@ -570,6 +570,7 @@ export interface DocumentMetadata {
   statusCode?: number;
   scrapeId?: string;
   numPages?: number;
+  totalPages?: number;
   contentType?: string;
   timezone?: string;
   proxyUsed?: "basic" | "stealth";
@@ -674,6 +675,12 @@ export interface SearchRequest {
   ignoreInvalidURLs?: boolean;
   timeout?: number; // ms
   scrapeOptions?: ScrapeOptions;
+  /**
+   * Enterprise search options. Use `["zdr"]` for end-to-end Zero Data
+   * Retention or `["anon"]` for anonymized search. Must be enabled for
+   * your team.
+   */
+  enterprise?: Array<"default" | "anon" | "zdr">;
   integration?: string;
   origin?: string;
 }
@@ -878,7 +885,20 @@ export interface MonitorCrawlTarget {
   scrapeOptions?: ScrapeOptions;
 }
 
-export type MonitorTarget = MonitorScrapeTarget | MonitorCrawlTarget;
+export interface MonitorSearchTarget {
+  id?: string;
+  type: "search";
+  queries: string[];
+  searchWindow?: "5m" | "15m" | "1h" | "6h" | "24h" | "7d";
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  maxResults?: number;
+}
+
+export type MonitorTarget =
+  | MonitorScrapeTarget
+  | MonitorCrawlTarget
+  | MonitorSearchTarget;
 
 export interface CreateMonitorRequest {
   name: string;
@@ -951,6 +971,37 @@ export interface MonitorPageJudgment {
   }>;
 }
 
+export interface MonitorScrapeTargetResult {
+  targetId: string;
+  type: "scrape";
+  expectedJobs?: string[];
+}
+
+export interface MonitorCrawlTargetResult {
+  targetId: string;
+  type: "crawl";
+  crawlId?: string;
+}
+
+export interface MonitorSearchTargetResult {
+  targetId: string;
+  type: "search";
+  searchCompleted?: boolean;
+  resultCount?: number;
+  matches?: number;
+  summary?: string;
+  judgeDegraded?: boolean;
+  degradedReason?: string | null;
+  searchCredits?: number;
+  judgeCredits?: number;
+  resultsJudged?: number;
+}
+
+export type MonitorTargetResult =
+  | MonitorScrapeTargetResult
+  | MonitorCrawlTargetResult
+  | MonitorSearchTargetResult;
+
 export interface MonitorCheck {
   id: string;
   monitorId: string;
@@ -960,7 +1011,8 @@ export interface MonitorCheck {
     | "completed"
     | "failed"
     | "partial"
-    | "skipped_overlap";
+    | "skipped_overlap"
+    | "skipped_no_credits";
   trigger: "scheduled" | "manual";
   scheduledFor?: string | null;
   startedAt?: string | null;
@@ -975,7 +1027,7 @@ export interface MonitorCheck {
     | "released"
     | "failed";
   summary: MonitorSummary;
-  targetResults?: unknown;
+  targetResults?: MonitorTargetResult[];
   notificationStatus?: unknown;
   error?: string | null;
   createdAt: string;

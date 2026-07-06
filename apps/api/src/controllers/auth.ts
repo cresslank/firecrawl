@@ -281,7 +281,7 @@ export async function getACUC(
     while (retries < maxRetries) {
       const database = Math.random() > 2 / 3 ? dbRr : db;
       try {
-        data = await authCreditUsageChunk(database, api_key, isExtract);
+        data = await authCreditUsageChunk(database, api_key);
         break;
       } catch (error) {
         logger.warn(
@@ -401,7 +401,7 @@ export async function getACUCTeam(
     while (retries < maxRetries) {
       const database = Math.random() > 2 / 3 ? dbRr : db;
       try {
-        data = await authCreditUsageChunkFromTeam(database, team_id, isExtract);
+        data = await authCreditUsageChunkFromTeam(database, team_id);
         break;
       } catch (error) {
         logger.warn(
@@ -633,10 +633,16 @@ export async function authenticateUser(
   mode?: RateLimiterMode,
   options?: { allowKeyless?: boolean },
 ): Promise<AuthResponse> {
+  const bypassChunk = mockACUC();
+  bypassChunk.is_extract =
+    mode === RateLimiterMode.Extract ||
+    mode === RateLimiterMode.ExtractStatus ||
+    mode === RateLimiterMode.ExtractAgentPreview;
+
   return withAuth(supaAuthenticateUser, {
     success: true,
-    chunk: null,
-    team_id: "bypass",
+    chunk: bypassChunk,
+    team_id: bypassChunk.team_id,
     org_id: null,
   })(req, res, mode, options);
 }

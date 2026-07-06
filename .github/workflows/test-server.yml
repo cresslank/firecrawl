@@ -48,6 +48,8 @@ jobs:
       HOST: 0.0.0.0
       TEST_SUITE_SELF_HOSTED: true
       TEST_SUITE_WEBSITE: http://127.0.0.1:4321
+      TEST_API_KEY: test
+      TEST_TEAM_ID: bypass
       OPENAI_API_KEY: ${{ matrix.ai == 'openai' && secrets.OPENAI_API_KEY || '' }}
       GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
       SEARXNG_ENDPOINT: ${{ matrix.search == 'searxng' && 'http://localhost:3434' || '' }}
@@ -63,6 +65,13 @@ jobs:
       USE_GO_MARKDOWN_PARSER: true
       ALLOW_LOCAL_WEBHOOKS: true
       FIRECRAWL_LOG_TO_FILE: true
+      # Exercise the parse upload-ref path in self-hosted CI. The snips run
+      # against a separately started API server, so these must be server envs,
+      # not test-process mutations.
+      ENV: test
+      PARSE_UPLOAD_STORAGE_DRIVER: local
+      PARSE_UPLOAD_REF_TEST_REQUIRED: true
+      IDMUX_URL: ${{ secrets.IDMUX_URL }}
     steps:
       - uses: actions/checkout@v5
 
@@ -72,6 +81,12 @@ jobs:
 
       - run: pnpm config set store-dir ~/.pnpm-store
       - run: mkdir -p ~/.pnpm-store
+
+      - name: Install FoundationDB client library
+        run: |
+          curl -fsSL -o /tmp/fdb-clients.deb \
+            "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb"
+          sudo dpkg -i /tmp/fdb-clients.deb
 
       - uses: actions/setup-node@v6
         with:
@@ -217,6 +232,9 @@ jobs:
           pnpx wait-on tcp:4321 -t 20s
         working-directory: apps/test-site
 
+      - name: Generate parse upload ref secret
+        run: echo "PARSE_UPLOAD_REF_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Start playwright
         if: matrix.engine == 'playwright'
         run: |
@@ -231,13 +249,6 @@ jobs:
         run: |
           docker build -t firecrawl/nuq-postgres:latest ./apps/nuq-postgres
           docker run -d -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres --name postgres firecrawl/nuq-postgres:latest
-
-      - name: Install FoundationDB client library
-        if: matrix.nuq == 'fdb'
-        run: |
-          curl -fsSL -o /tmp/fdb-clients.deb \
-            "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb"
-          sudo dpkg -i /tmp/fdb-clients.deb
 
       - name: Start FoundationDB
         if: matrix.nuq == 'fdb'

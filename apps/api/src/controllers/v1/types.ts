@@ -1073,6 +1073,7 @@ export type Document = {
     scrapeId?: string;
     error?: string;
     numPages?: number;
+    totalPages?: number;
     contentType?: string;
     timezone?: string;
     proxyUsed: "basic" | "stealth";
@@ -1319,6 +1320,7 @@ export type TeamFlags = {
   searchFeedbackOptOut?: boolean;
   researchBeta?: boolean;
   highlightsBeta?: boolean;
+  enrichBeta?: boolean;
   // routes the team's new queue work to the FoundationDB backend
   nuqFdb?: boolean;
 } | null;
