@@ -125,7 +125,7 @@ services:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
     # uncomment the Valkey statement and comment out the Redis statement.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    image: redis:8.6.4@sha256:c00011808d8c33f83e4eedb0a50f04a4c8e86b08d7727e7d809a75a59298846b
+    image: redis:8.6.4@sha256:4483474d5e78c444ce180037def4430ec0d02553663ded2a6d7a1c922da00ecf
     # image: valkey/valkey:<tag>-alpine@sha256:<digest>
 
     networks:
@@ -139,7 +139,7 @@ services:
         compress: "true"
 
   rabbitmq:
-    image: rabbitmq:4.3.2-management@sha256:726f87705c42a3c948c48b945330e349f52ab3aad8a7a9795a4f030438108180
+    image: rabbitmq:4.3.2-management@sha256:47bd157554ee438e52d06fc46a738aaee792415ed2e1aa1bcee2d568237e49a8
     networks:
       - backend
     command: rabbitmq-server
