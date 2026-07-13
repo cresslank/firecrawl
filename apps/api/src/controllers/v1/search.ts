@@ -22,6 +22,7 @@ import { ScrapeJobTimeoutError } from "../../lib/error";
 import { captureExceptionWithZdrCheck } from "../../services/sentry";
 import { z } from "zod";
 import { executeSearch } from "../../search/execute";
+import { resolveThreatProtection } from "../../lib/threat-protection/request";
 import {
   DocumentWithCostTracking,
   scrapeSearchResults,
@@ -33,7 +34,7 @@ import {
 import { fromV1ScrapeOptions } from "../v2/types";
 import { getSearchForcedKind } from "../../lib/zdr-helpers";
 import {
-  KEYLESS_CREDITS_MESSAGE,
+  KEYLESS_FREE_TIER_LIMIT_MESSAGE,
   adjustKeylessCredits,
   logKeylessCreditUsage,
   reserveKeylessCredits,
@@ -151,6 +152,22 @@ export async function searchController(
       origin: req.body.origin,
     });
 
+    // Threat protection: resolve the effective policy. Blocked domains are
+    // removed from search results entirely.
+    const threatProtection = await resolveThreatProtection({
+      teamId: req.auth.team_id,
+      orgId: req.acuc?.org_id ?? null,
+      flags: req.acuc?.flags ?? null,
+      override:
+        req.body.threatProtection ?? req.body.scrapeOptions?.threatProtection,
+    });
+    if (threatProtection.error) {
+      return res.status(403).json({
+        success: false,
+        error: threatProtection.error,
+      });
+    }
+
     await logRequest({
       id: jobId,
       kind: "search",
@@ -195,7 +212,7 @@ export async function searchController(
         applyAgentAuthDiscoveryHeader(res);
         return res.status(429).json({
           success: false,
-          error: KEYLESS_CREDITS_MESSAGE,
+          error: KEYLESS_FREE_TIER_LIMIT_MESSAGE,
         });
       }
       reservedKeylessCredits = projectedKeylessCredits;
@@ -228,6 +245,7 @@ export async function searchController(
         zeroDataRetention,
         agentIndexOnly: (req as any).agentIndexOnly ?? false,
         keylessReserved: reservedKeylessCredits > 0,
+        threatProtectionPolicy: threatProtection.policy,
       },
       logger,
     );
