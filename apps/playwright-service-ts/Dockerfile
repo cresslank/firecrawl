@@ -8,7 +8,7 @@ ENV PATH="$PNPM_HOME:$PATH"
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
 ENV CI=true
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=firecrawl-playwright-pnpm,target=/pnpm/store \
