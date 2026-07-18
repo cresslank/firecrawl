@@ -1,7 +1,6 @@
 {
   "name": "playwright-scraper-api",
   "version": "1.0.0",
-  "packageManager": "pnpm@11.1.3",
   "description": "browser rendering service with playwright",
   "main": "api.ts",
   "scripts": {
