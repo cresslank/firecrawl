@@ -5,7 +5,7 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV CI=true
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
 
 FROM rust:1.95.0-slim@sha256:5021128d455987e7e7d6586bd7288fa876614821292614acbb761c21fc1ebb15 AS rust-toolchain
 
@@ -85,6 +85,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     curl \
     git \
     procps \
+    && rm -rf /root/.cache /pnpm \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
