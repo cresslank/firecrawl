@@ -1,13 +1,15 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-ARG GOLANG_IMAGE=golang:1.25.12-trixie@sha256:c699a45b4ed445f5a618233d1910f7c889dd52b831594047eff8e6a52794c814
-ARG POSTGRES_IMAGE=postgres:17.10-trixie@sha256:2203e6282d9e7de7c24d7da234e2a744fb325df366a3fd8ed940e8abbee39527
+ARG GOLANG_IMAGE=golang:1.25.12-trixie@sha256:d41da62c5fa95d88bac8ea732451c00f76aefc5ba4931b694879f4ae15676db8
+ARG POSTGRES_IMAGE=postgres:17.10-trixie@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 FROM ${GOLANG_IMAGE} AS gosu-build
 RUN /usr/local/go/bin/go install github.com/tianon/gosu@v0.0.0-20250923190938-6456aaa0f3c8
 
 FROM ${POSTGRES_IMAGE}
 ARG PG_MAJOR=17
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$GIT_SHA
 
 # Replace the upstream gosu binary with one built by a Go toolchain containing
 # the current stdlib security fixes.

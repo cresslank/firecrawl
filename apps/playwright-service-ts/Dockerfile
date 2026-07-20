@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM node:22.22.3-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75 AS base
+FROM node:22.23.1-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba AS base
+
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$GIT_SHA
 
 WORKDIR /usr/src/app
 
@@ -8,7 +11,7 @@ ENV PATH="$PNPM_HOME:$PATH"
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
 ENV CI=true
 
-RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=firecrawl-playwright-pnpm,target=/pnpm/store \

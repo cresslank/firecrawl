@@ -683,7 +683,8 @@ async function setupNuqRabbitMQ(): Promise<Services["nuqRabbitMQ"]> {
   return containerInfo;
 }
 
-const FDB_IMAGE = "foundationdb/foundationdb:7.3.63";
+const FDB_IMAGE =
+  "foundationdb/foundationdb:7.3.79@sha256:d3530c3066f94abffb61facac527c9c3517f6553ee0e75efa69d54296290156a";
 
 async function waitForFdb(
   runtime: string,

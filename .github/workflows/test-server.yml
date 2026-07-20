@@ -61,7 +61,8 @@ jobs:
       NUQ_RABBITMQ_URL: amqp://localhost:5672
       NUQ_BACKEND: ${{ matrix.nuq == 'fdb' && 'fdb' || '' }}
       FDB_CLUSTER_FILE: ${{ matrix.nuq == 'fdb' && '/tmp/fdb.cluster' || '' }}
-      FDB_VERSION: 7.3.63
+      FDB_VERSION: 7.3.79
+      FDB_IMAGE: foundationdb/foundationdb:7.3.79@sha256:d3530c3066f94abffb61facac527c9c3517f6553ee0e75efa69d54296290156a
       USE_GO_MARKDOWN_PARSER: true
       ALLOW_LOCAL_WEBHOOKS: true
       FIRECRAWL_LOG_TO_FILE: true
@@ -250,7 +251,7 @@ jobs:
       - name: Start FoundationDB
         if: matrix.nuq == 'fdb'
         run: |
-          docker run -d --name fdb -p 4500:4500 -e FDB_NETWORKING_MODE=host foundationdb/foundationdb:${FDB_VERSION}
+          docker run -d --name fdb -p 4500:4500 -e FDB_NETWORKING_MODE=host "${FDB_IMAGE}"
           for i in $(seq 1 30); do
             if docker exec fdb fdbcli --exec "status minimal" 2>/dev/null; then break; fi
             sleep 1
@@ -580,7 +581,8 @@ jobs:
     name: NuQ FoundationDB core tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
-      FDB_VERSION: 7.3.63
+      FDB_VERSION: 7.3.79
+      FDB_IMAGE: foundationdb/foundationdb:7.3.79@sha256:d3530c3066f94abffb61facac527c9c3517f6553ee0e75efa69d54296290156a
     steps:
       - uses: actions/checkout@v5
 
@@ -608,7 +610,7 @@ jobs:
 
       - name: Start FoundationDB
         run: |
-          docker run -d --name fdb -p 4500:4500 -e FDB_NETWORKING_MODE=host foundationdb/foundationdb:${FDB_VERSION}
+          docker run -d --name fdb -p 4500:4500 -e FDB_NETWORKING_MODE=host "${FDB_IMAGE}"
           for i in $(seq 1 30); do
             if docker exec fdb fdbcli --exec "status minimal" 2>/dev/null; then break; fi
             sleep 1

@@ -4,7 +4,10 @@ x-common-service: &common-service
   # NOTE: If you don't want to build the service locally,
   # comment out the build: statement and uncomment the image: statement
   # image: ghcr.io/firecrawl/firecrawl:<tag>@sha256:<digest>
-  build: apps/api
+  build:
+    context: apps/api
+    args:
+      GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
 
   ulimits:
     nofile:
@@ -65,7 +68,10 @@ services:
     # NOTE: If you don't want to build the service locally,
     # comment out the build: statement and uncomment the image: statement
     # image: ghcr.io/firecrawl/playwright-service:<tag>@sha256:<digest>
-    build: apps/playwright-service-ts
+    build:
+      context: apps/playwright-service-ts
+      args:
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
     environment:
       PORT: 3000
       PROXY_SERVER: ${PROXY_SERVER}
@@ -125,7 +131,7 @@ services:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
     # uncomment the Valkey statement and comment out the Redis statement.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    image: redis:8.6.4@sha256:4483474d5e78c444ce180037def4430ec0d02553663ded2a6d7a1c922da00ecf
+    image: redis:8.6.4@sha256:a051e4f48a5d0ceda6554974f3ad0f5369f4479197f36829332c1325cecad2b7
     # image: valkey/valkey:<tag>-alpine@sha256:<digest>
 
     networks:
@@ -139,7 +145,7 @@ services:
         compress: "true"
 
   rabbitmq:
-    image: rabbitmq:4.3.2-management@sha256:47bd157554ee438e52d06fc46a738aaee792415ed2e1aa1bcee2d568237e49a8
+    image: rabbitmq:4.3.2-management@sha256:c1e33461287f4c53049ce525575f0df77b2a00a88e2593776afbb6c1489bdb81
     networks:
       - backend
     command: rabbitmq-server
@@ -160,7 +166,10 @@ services:
     # NOTE: If you don't want to build the image locally,
     # comment out the build: statement and uncomment the image: statement
     # image: ghcr.io/firecrawl/nuq-postgres:<tag>@sha256:<digest>
-    build: apps/nuq-postgres
+    build:
+      context: apps/nuq-postgres
+      args:
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -189,7 +198,7 @@ services:
   # fdb-cluster-file volume. Replaces nuq-postgres once stable.
   foundationdb:
     profiles: ["foundationdb"]
-    image: foundationdb/foundationdb:7.3.63
+    image: foundationdb/foundationdb:7.3.79@sha256:d3530c3066f94abffb61facac527c9c3517f6553ee0e75efa69d54296290156a
     environment:
       FDB_NETWORKING_MODE: container
       FDB_COORDINATOR_PORT: 4500
@@ -208,7 +217,7 @@ services:
   # one-shot: creates the database on first boot (no-op afterwards)
   foundationdb-init:
     profiles: ["foundationdb"]
-    image: foundationdb/foundationdb:7.3.63
+    image: foundationdb/foundationdb:7.3.79@sha256:d3530c3066f94abffb61facac527c9c3517f6553ee0e75efa69d54296290156a
     depends_on:
       - foundationdb
     entrypoint:

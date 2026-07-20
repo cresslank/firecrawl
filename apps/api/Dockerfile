@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1
-FROM node:22.22.3-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75 AS base
+FROM node:22.23.1-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba AS base
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV CI=true
 
-RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
 
-FROM rust:1.95.0-slim@sha256:5021128d455987e7e7d6586bd7288fa876614821292614acbb761c21fc1ebb15 AS rust-toolchain
+FROM rust:1.97.1-slim@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS rust-toolchain
 
 # Build Go shared library
-FROM golang:1.24.13@sha256:d2d2bc1c84f7e60d7d2438a3836ae7d0c847f4888464e7ec9ba3a1339a1ee804 AS go-build
+FROM golang:1.25.12@sha256:9006890ecba0a168034d99516084099ae3114d9f2b7d6572c77f2dde57ebc980 AS go-build
 WORKDIR /app
 COPY sharedLibs/go-html-to-md ./sharedLibs/go-html-to-md
 
@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y \
 
 # FoundationDB client library (libfdb_c + headers), needed by the
 # `foundationdb` npm package at install time on arches without prebuilds.
-ARG FDB_VERSION=7.3.63
+ARG FDB_VERSION=7.3.79
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
@@ -92,7 +92,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # FoundationDB client library (libfdb_c + fdbcli)
-ARG FDB_VERSION=7.3.63
+ARG FDB_VERSION=7.3.79
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
