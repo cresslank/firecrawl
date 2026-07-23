@@ -38,6 +38,7 @@ import {
 import { projectScrapeCredits } from "../../lib/keyless-credit-projection";
 import { applyAgentAuthDiscoveryHeader } from "../../lib/agent-auth-discovery";
 import { resolveThreatProtection } from "../../lib/threat-protection/request";
+import { getEffectiveConcurrencyLimit } from "../../lib/concurrency-limit";
 
 const AGENT_INTEROP_CONCURRENCY_BOOST = 3;
 
@@ -264,7 +265,11 @@ export async function scrapeController(
         }
         req.on("close", () => aborter.abort());
 
-        const baseConcurrency = req.acuc?.concurrency || 1;
+        const baseConcurrency = await getEffectiveConcurrencyLimit(
+          req.auth.team_id,
+          req.acuc?.concurrency,
+          req.acuc?.org_id,
+        );
         const concurrency = boostConcurrency
           ? baseConcurrency * AGENT_INTEROP_CONCURRENCY_BOOST
           : baseConcurrency;
@@ -328,6 +333,7 @@ export async function scrapeController(
                       bypassBilling: isDirectToBullMQ || !shouldBill,
                       zeroDataRetention,
                       teamFlags: req.acuc?.flags ?? null,
+                      orgId: req.acuc?.org_id ?? null,
                       teamConcurrency: req.acuc?.concurrency ?? null,
                       agentIndexOnly: (req as any).agentIndexOnly ?? false,
                       threatProtection: threatProtection.policy ?? undefined,

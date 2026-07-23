@@ -34,6 +34,7 @@ import { checkUrl } from "../../lib/threat-protection";
 import { UnsafeDomainBlockedError } from "../../lib/threat-protection/error";
 import { calculateThreatScanCredits } from "../../lib/scrape-billing";
 import { billTeam } from "../../services/billing/credit_billing";
+import { getEffectiveConcurrencyLimit } from "../../lib/concurrency-limit";
 
 export async function crawlController(
   req: RequestWithAuth<{}, CrawlResponse, CrawlRequest>,
@@ -201,6 +202,7 @@ export async function crawlController(
       ...internalOptions,
       disableSmartWaitCache: true,
       teamId: req.auth.team_id,
+      orgId: req.acuc?.org_id ?? null,
       saveScrapeResultToGCS: config.GCS_FIRE_ENGINE_BUCKET_NAME ? true : false,
       zeroDataRetention,
       agentIndexOnly: (req as any).agentIndexOnly ?? false,
@@ -210,9 +212,14 @@ export async function crawlController(
     createdAt: Date.now(),
     maxConcurrency:
       req.body.maxConcurrency !== undefined
-        ? req.acuc?.concurrency !== undefined
-          ? Math.min(req.body.maxConcurrency, req.acuc.concurrency)
-          : req.body.maxConcurrency
+        ? Math.min(
+            req.body.maxConcurrency,
+            await getEffectiveConcurrencyLimit(
+              req.auth.team_id,
+              req.acuc?.concurrency,
+              req.acuc?.org_id,
+            ),
+          )
         : undefined,
     zeroDataRetention,
     v1: true,

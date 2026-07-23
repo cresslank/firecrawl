@@ -6,7 +6,7 @@ import { logger } from "../lib/logger";
 import { parseApi } from "../lib/parseApi";
 import { withAuth } from "../lib/withAuth";
 import { getAgentSponsorStatus } from "../services/agent-sponsor";
-import { getRateLimiter } from "../services/rate-limiter";
+import { getRateLimiter, getAutumnRateLimiter } from "../services/rate-limiter";
 import {
   KEYLESS_FREE_TIER_LIMIT_MESSAGE,
   consumeKeylessRequest,
@@ -19,9 +19,7 @@ import { checkIpRestriction } from "../lib/ip-restriction";
 import { checkKeyEndpointRestriction } from "../lib/key-restriction";
 import { deleteKey, getValue, setValue } from "../services/redis";
 import { redlock } from "../services/redlock";
-import { eq } from "drizzle-orm";
 import { db, dbRr } from "../db/connection";
-import * as schema from "../db/schema";
 import {
   authCreditUsageChunk,
   authCreditUsageChunkFromTeam,
@@ -29,6 +27,10 @@ import {
 } from "../db/rpc";
 import { AuthResponse, RateLimiterMode } from "../types";
 import { AuthCreditUsageChunk, AuthCreditUsageChunkFromTeam } from "./v1/types";
+import {
+  autumnService,
+  isAutumnLimitsEnabled,
+} from "../services/autumn/autumn.service";
 
 function normalizedApiIsUuid(potentialUuid: string): boolean {
   // Check if the string is a valid UUID
@@ -79,6 +81,7 @@ const mockPreviewACUC: (
   api_key: "preview",
   api_key_id: 0,
   team_id,
+  org_id: "preview",
   rate_limits: {
     crawl: 2,
     scrape: 10,
@@ -104,6 +107,7 @@ const mockACUC: () => AuthCreditUsageChunk = () => ({
   api_key: "bypass",
   api_key_id: 0,
   team_id: "bypass",
+  org_id: "bypass",
   rate_limits: {
     crawl: 99999999,
     scrape: 99999999,
@@ -614,44 +618,6 @@ export async function authenticateUser(
   })(req, res, mode, options);
 }
 
-/**
- * Backfills org_id for stale cached auth chunks so Autumn check gating can run.
- */
-async function ensureChunkOrgId(
-  apiKey: string,
-  chunk: AuthCreditUsageChunk | null,
-): Promise<AuthCreditUsageChunk | null> {
-  if (!chunk || chunk.org_id || config.USE_DB_AUTHENTICATION !== true) {
-    return chunk;
-  }
-
-  let data: { org_id: string | null } | undefined;
-  try {
-    [data] = await dbRr
-      .select({ org_id: schema.teams.org_id })
-      .from(schema.teams)
-      .where(eq(schema.teams.id, chunk.team_id))
-      .limit(1);
-  } catch (error) {
-    logger.warn("Failed to backfill org_id for auth chunk", {
-      teamId: chunk.team_id,
-      error,
-    });
-    return chunk;
-  }
-
-  if (!data?.org_id) {
-    logger.warn("Failed to backfill org_id for auth chunk", {
-      teamId: chunk.team_id,
-    });
-    return chunk;
-  }
-
-  chunk.org_id = data.org_id;
-  await setCachedACUC(apiKey, !!chunk.is_extract, chunk);
-  return chunk;
-}
-
 async function supaAuthenticateUser(
   req,
   res,
@@ -693,11 +659,11 @@ async function supaAuthenticateUser(
   }
   if (token == config.PREVIEW_TOKEN) {
     if (mode == RateLimiterMode.CrawlStatus) {
-      rateLimiter = getRateLimiter(RateLimiterMode.CrawlStatus, token);
+      rateLimiter = getRateLimiter(RateLimiterMode.CrawlStatus, null);
     } else if (mode == RateLimiterMode.ExtractStatus) {
-      rateLimiter = getRateLimiter(RateLimiterMode.ExtractStatus, token);
+      rateLimiter = getRateLimiter(RateLimiterMode.ExtractStatus, null);
     } else {
-      rateLimiter = getRateLimiter(RateLimiterMode.Preview, token);
+      rateLimiter = getRateLimiter(RateLimiterMode.Preview, null);
     }
     teamId = `preview_${iptoken}`;
   } else if (token.startsWith("fco_")) {
@@ -714,7 +680,6 @@ async function supaAuthenticateUser(
     // Use the resolved fc- API key to get the normal ACUC chunk
     const resolvedApi = parseApi(introspection.api_key);
     chunk = await getACUC(resolvedApi, false, true, RateLimiterMode.Scrape);
-    chunk = await ensureChunkOrgId(resolvedApi, chunk);
 
     if (chunk === null) {
       return {
@@ -729,10 +694,21 @@ async function supaAuthenticateUser(
     subscriptionData = {
       team_id: teamId,
     };
-    rateLimiter = getRateLimiter(
-      mode ?? RateLimiterMode.Crawl,
-      chunk.rate_limits,
-    );
+    if (isAutumnLimitsEnabled(chunk.org_id)) {
+      const rateLimitMultiplier = await autumnService.getRateLimitMultiplier(
+        teamId,
+        chunk.org_id,
+      );
+      rateLimiter = getAutumnRateLimiter(
+        mode ?? RateLimiterMode.Crawl,
+        rateLimitMultiplier,
+      );
+    } else {
+      rateLimiter = getRateLimiter(
+        mode ?? RateLimiterMode.Crawl,
+        chunk.rate_limits,
+      );
+    }
   } else {
     normalizedApi = parseApi(token);
     if (!normalizedApiIsUuid(normalizedApi)) {
@@ -744,7 +720,6 @@ async function supaAuthenticateUser(
     }
 
     chunk = await getACUC(normalizedApi, false, true, RateLimiterMode.Scrape);
-    chunk = await ensureChunkOrgId(normalizedApi, chunk);
 
     if (chunk === null) {
       return {
@@ -759,10 +734,21 @@ async function supaAuthenticateUser(
     subscriptionData = {
       team_id: teamId,
     };
-    rateLimiter = getRateLimiter(
-      mode ?? RateLimiterMode.Crawl,
-      chunk.rate_limits,
-    );
+    if (isAutumnLimitsEnabled(chunk.org_id)) {
+      const rateLimitMultiplier = await autumnService.getRateLimitMultiplier(
+        teamId,
+        chunk.org_id,
+      );
+      rateLimiter = getAutumnRateLimiter(
+        mode ?? RateLimiterMode.Crawl,
+        rateLimitMultiplier,
+      );
+    } else {
+      rateLimiter = getRateLimiter(
+        mode ?? RateLimiterMode.Crawl,
+        chunk.rate_limits,
+      );
+    }
   }
 
   if (chunk?.flags?.ipRestriction) {
