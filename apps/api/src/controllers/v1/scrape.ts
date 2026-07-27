@@ -190,11 +190,7 @@ export async function scrapeController(
     doc = await teamConcurrencySemaphore.withSemaphore(
       req.auth.team_id,
       jobId,
-      await getEffectiveConcurrencyLimit(
-        req.auth.team_id,
-        req.acuc?.concurrency,
-        req.acuc?.org_id,
-      ),
+      await getEffectiveConcurrencyLimit(req.auth.team_id, req.acuc?.org_id),
       aborter.signal,
       timeout ?? 60_000,
       async limited => {
@@ -299,6 +295,14 @@ export async function scrapeController(
       }
 
       if (e.code === "unsafe_domain_blocked") {
+        return res.status(403).json({
+          success: false,
+          code: e.code,
+          error: e.message,
+        });
+      }
+
+      if (e.code === "SCRAPE_MEDIA_ACCESS_DENIED") {
         return res.status(403).json({
           success: false,
           code: e.code,

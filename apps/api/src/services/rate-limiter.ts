@@ -2,7 +2,6 @@ import { RateLimiterRedis } from "rate-limiter-flexible";
 import { config } from "../config";
 import { RateLimiterMode } from "../types";
 import Redis from "ioredis";
-import type { AuthCreditUsageChunk } from "../controllers/v1/types";
 
 export const redisRateLimitClient = new Redis(config.REDIS_RATE_LIMIT_URL!, {
   enableAutoPipelining: true,
@@ -16,7 +15,9 @@ const createRateLimiter = (keyPrefix, points) =>
     duration: 60, // Duration in seconds
   });
 
-const fallbackRateLimits: AuthCreditUsageChunk["rate_limits"] = {
+// Keyed by RateLimiterMode so a new mode fails to compile until it has a
+// fallback here, rather than silently taking the 500 default below.
+const fallbackRateLimits: Record<RateLimiterMode, number> = {
   crawl: 15,
   scrape: 100,
   search: 100,
@@ -59,15 +60,12 @@ const BASE_RATE_LIMITS: Partial<Record<RateLimiterMode, number>> = {
 };
 
 /**
- * Builds the per-minute rate limiter for a mode from the team's ACUC
- * rate_limits (the default path). Used unless the Autumn-limits ramp is enabled
- * for the org, in which case getAutumnRateLimiter is used instead.
+ * Builds the per-minute rate limiter for a mode from the static fallback table.
+ * Used for the preview token, which has no Autumn entity; authenticated teams
+ * use getAutumnRateLimiter.
  */
-export function getRateLimiter(
-  mode: RateLimiterMode,
-  rate_limits: AuthCreditUsageChunk["rate_limits"] | null,
-): RateLimiterRedis {
-  let rateLimit = rate_limits?.[mode] ?? fallbackRateLimits?.[mode] ?? 500;
+export function getRateLimiter(mode: RateLimiterMode): RateLimiterRedis {
+  let rateLimit = fallbackRateLimits?.[mode] ?? 500;
 
   if (mode === RateLimiterMode.Search || mode === RateLimiterMode.Scrape) {
     // TEMP: Mogery
@@ -78,10 +76,10 @@ export function getRateLimiter(
 }
 
 /**
- * Builds the per-minute rate limiter for a mode from an Autumn rate-limit
- * multiplier: the effective limit is `base × multiplier` for multiplier-scaled
- * modes (default ×1). Modes without a base fall back to the static table. Used
- * only when the Autumn-limits ramp is enabled for the org.
+ * Builds the per-minute rate limiter for an authenticated team from its Autumn
+ * rate-limit multiplier: the effective limit is `base × multiplier` for
+ * multiplier-scaled modes (default ×1). Modes without a base fall back to the
+ * static table.
  */
 export function getAutumnRateLimiter(
   mode: RateLimiterMode,

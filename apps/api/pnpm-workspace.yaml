@@ -34,6 +34,7 @@ allowBuilds:
   unrs-resolver: true
   utf-8-validate: true
   wordpos: true
+  "@mendable/firecrawl-rs@file:native": true
 
 overrides:
   "@types/express": "^5.0.6"
@@ -57,7 +58,7 @@ overrides:
   "smol-toml@<1.6.1": ">=1.6.1"
   handlebars: ">=4.7.9"
   "path-to-regexp@~0.1.12": "0.1.13"
-  "brace-expansion@>=5.0.0 <5.0.7": "5.0.7"
+  "brace-expansion@>=5.0.0 <5.0.8": "5.0.8"
   "ws@>=7.0.0 <7.5.11": "7.5.11"
   "ws@>=8.0.0 <8.21.0": "8.21.0"
   "form-data@>=2.0.0 <2.5.6": "2.5.6"

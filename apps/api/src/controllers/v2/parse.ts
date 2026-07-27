@@ -451,7 +451,6 @@ export async function parseController(
 
         const baseConcurrency = await getEffectiveConcurrencyLimit(
           req.auth.team_id,
-          req.acuc?.concurrency,
           req.acuc?.org_id,
         );
         const concurrency = boostConcurrency
@@ -518,7 +517,7 @@ export async function parseController(
                       zeroDataRetention,
                       teamFlags: req.acuc?.flags ?? null,
                       orgId: req.acuc?.org_id ?? null,
-                      teamConcurrency: req.acuc?.concurrency ?? null,
+                      teamConcurrency: baseConcurrency,
                       uploadedFile: file,
                       forceEngine,
                       isParse: true,

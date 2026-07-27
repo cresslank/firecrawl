@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { getMcpActionLogConfigErrors } from "./lib/mcp-action-log-config";
 
 /* Codecs */
 const delimitedList = (separator = ",") => {
@@ -43,6 +44,10 @@ const configSchema = z.object({
   // forward the real client IP for keyless rate-limiting via the
   // `x-firecrawl-keyless-ip` header. Untrusted callers can't override their IP.
   KEYLESS_PROXY_SECRET: z.string().optional(),
+  // Dedicated signer/verifier secret for short-lived MCP delegated credentials.
+  // Keep separate from KEYLESS_PROXY_SECRET because delegated credentials can
+  // authorize billed requests for a managed OAuth connection.
+  MCP_DELEGATED_CREDENTIAL_SECRET: emptyStringAsUndefined(z.string().min(32)),
   // Optional Spur Context API token (https://docs.spur.us/context-api). When
   // set, keyless requests have their client IP checked against Spur and are
   // refused if the IP fronts anonymizing/rotating infrastructure (VPN/proxy/
@@ -85,18 +90,6 @@ const configSchema = z.object({
   LLAMAPARSE_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   AUTUMN_SECRET_KEY: z.string().optional(),
-  // Ramp control for sourcing rate limits / concurrency / job priority from
-  // Autumn instead of ACUC. Two independent knobs (an org is enabled if it
-  // matches either); both default to the old ACUC behavior:
-  //   - AUTUMN_LIMITS_ENABLED_ORG_IDS: comma-separated org IDs to always enable
-  //     (or "*" for all). Use to pin specific verified orgs on first.
-  //   - AUTUMN_LIMITS_EXPERIMENT_PERCENT: stable per-org bucket ramp in [0,100].
-  AUTUMN_LIMITS_ENABLED_ORG_IDS: z.string().default(""),
-  AUTUMN_LIMITS_EXPERIMENT_PERCENT: z.coerce
-    .number()
-    .min(0)
-    .max(100)
-    .default(0),
   RESEND_API_KEY: z.string().optional(),
   PREVIEW_TOKEN: z.string().optional(),
   SEARCH_PREVIEW_TOKEN: z.string().optional(),
@@ -114,6 +107,9 @@ const configSchema = z.object({
   // OAuth token introspection
   OAUTH_INTROSPECT_URL: z.string().optional(),
   OAUTH_INTROSPECT_SECRET: z.string().optional(),
+  MCP_ACTION_LOG_SECRET: z.string().optional(),
+  MCP_ACTION_LOG_STORAGE_ENABLED: z.stringbool().default(false),
+  MCP_ACTION_LOG_WRITES_ENABLED: z.stringbool().default(false),
 
   // Agent auth discovery (RFC 9728 WWW-Authenticate on 401)
   AGENT_AUTH_RESOURCE_METADATA_URL: z
@@ -401,4 +397,14 @@ const configSchema = z.object({
   CODE_SANDBOX_URL: z.string().default("ws://code-sandbox:3001"),
 });
 
-export const config = configSchema.parse(process.env);
+const validatedConfigSchema = configSchema.superRefine((value, context) => {
+  for (const error of getMcpActionLogConfigErrors(value)) {
+    context.addIssue({
+      code: "custom",
+      path: [error.path],
+      message: error.message,
+    });
+  }
+});
+
+export const config = validatedConfigSchema.parse(process.env);

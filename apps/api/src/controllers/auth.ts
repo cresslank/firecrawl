@@ -1,4 +1,3 @@
-import * as crypto from "crypto";
 import { RateLimiterRedis } from "rate-limiter-flexible";
 import { isValidUuid } from "../lib/owner-id";
 import { config } from "../config";
@@ -28,9 +27,13 @@ import {
 import { AuthResponse, RateLimiterMode } from "../types";
 import { AuthCreditUsageChunk, AuthCreditUsageChunkFromTeam } from "./v1/types";
 import {
-  autumnService,
-  isAutumnLimitsEnabled,
-} from "../services/autumn/autumn.service";
+  FIRECRAWL_REST_RESOURCE,
+  OAuthIntrospectionUnavailableError,
+  resolveOAuthToken as resolveOAuthTokenWithIntrospection,
+} from "../services/oauth-token-introspection";
+import type { OAuthIntrospectionResponse } from "../services/oauth-token-introspection";
+import { verifyMcpDelegatedCredential } from "../lib/mcp-delegated-credential";
+import { autumnService } from "../services/autumn/autumn.service";
 
 function normalizedApiIsUuid(potentialUuid: string): boolean {
   // Check if the string is a valid UUID
@@ -44,8 +47,9 @@ async function setCachedACUC(
     | AuthCreditUsageChunk
     | null
     | ((acuc: AuthCreditUsageChunk) => AuthCreditUsageChunk | null),
+  credentialPurpose: "general" | "hosted_mcp_oauth" = "general",
 ) {
-  const cacheKeyACUC = `acuc_${api_key}_${is_extract ? "extract" : "scrape"}`;
+  const cacheKeyACUC = `acuc_${credentialPurpose}_${api_key}_${is_extract ? "extract" : "scrape"}`;
   const redLockKey = `lock_${cacheKeyACUC}`;
 
   try {
@@ -82,23 +86,6 @@ const mockPreviewACUC: (
   api_key_id: 0,
   team_id,
   org_id: "preview",
-  rate_limits: {
-    crawl: 2,
-    scrape: 10,
-    extract: 10,
-    search: 5,
-    map: 5,
-    preview: 5,
-    crawlStatus: 500,
-    extractStatus: 500,
-    extractAgentPreview: 1,
-    scrapeAgentPreview: 5,
-  },
-  plan_priority: {
-    bucketLimit: 25,
-    planModifier: 0.1,
-  },
-  concurrency: is_extract ? 200 : 2,
   flags: null,
   is_extract,
 });
@@ -108,38 +95,9 @@ const mockACUC: () => AuthCreditUsageChunk = () => ({
   api_key_id: 0,
   team_id: "bypass",
   org_id: "bypass",
-  rate_limits: {
-    crawl: 99999999,
-    scrape: 99999999,
-    extract: 99999999,
-    search: 99999999,
-    map: 99999999,
-    preview: 99999999,
-    crawlStatus: 99999999,
-    extractStatus: 99999999,
-    extractAgentPreview: 99999999,
-    scrapeAgentPreview: 99999999,
-  },
-  plan_priority: {
-    bucketLimit: 25,
-    planModifier: 0.1,
-  },
-  concurrency: 99999999,
   flags: null,
   is_extract: false,
 });
-
-/**
- * Introspection response from the OAuth token endpoint.
- */
-interface OAuthIntrospectionResponse {
-  active: boolean;
-  api_key: string;
-  scope: string;
-  client_id: string;
-  team_id: string;
-  exp: number;
-}
 
 /**
  * Resolve an OAuth access token (fco_…) to the underlying API key via
@@ -156,66 +114,16 @@ async function resolveOAuthToken(
     logger.warn(
       "OAuth introspection not configured (OAUTH_INTROSPECT_URL / OAUTH_INTROSPECT_SECRET)",
     );
-    return null;
+    throw new OAuthIntrospectionUnavailableError(
+      "OAuth introspection is not configured",
+    );
   }
 
-  // Check Redis cache first (hash the token to avoid leaking material in key names)
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex")
-    .substring(0, 32);
-  const cacheKey = `oauth_token:${tokenHash}`;
-  const cached = await getValue(cacheKey);
-  if (cached !== null) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (!parsed.active) return null;
-      return parsed;
-    } catch {
-      // Corrupt cache entry — treat as a miss
-    }
-  }
-
-  try {
-    const response = await fetch(introspectUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${introspectSecret}`,
-      },
-      body: JSON.stringify({ token }),
-    });
-
-    if (!response.ok) {
-      logger.error("OAuth introspection request failed", {
-        status: response.status,
-      });
-      return null;
-    }
-
-    const data = (await response.json()) as OAuthIntrospectionResponse;
-
-    // Cache the result — use remaining TTL (max 5 minutes) or 60s for inactive
-    if (data.active) {
-      const remainingSeconds = Math.max(
-        0,
-        data.exp - Math.floor(Date.now() / 1000),
-      );
-      const cacheTtl = Math.min(remainingSeconds, 300); // Cap at 5 minutes
-      if (cacheTtl > 0) {
-        await setValue(cacheKey, JSON.stringify(data), cacheTtl);
-      }
-    } else {
-      // Cache negative results briefly to avoid hammering introspection
-      await setValue(cacheKey, JSON.stringify({ active: false }), 60);
-    }
-
-    return data.active ? data : null;
-  } catch (error) {
-    logger.error("OAuth introspection error", { error });
-    return null;
-  }
+  return resolveOAuthTokenWithIntrospection(token, {
+    introspectUrl,
+    introspectSecret,
+    expectedResource: FIRECRAWL_REST_RESOURCE,
+  });
 }
 
 async function getACUC(
@@ -223,7 +131,15 @@ async function getACUC(
   cacheOnly = false,
   useCache = true,
   mode?: RateLimiterMode,
+  credentialPurpose: "general" | "hosted_mcp_oauth" = "general",
 ): Promise<AuthCreditUsageChunk | null> {
+  // Managed OAuth credentials are connection-scoped and can be created or
+  // revoked immediately before this request. Never serve them from Redis or a
+  // lagging read replica: both authorization and revocation must observe the
+  // primary database.
+  const requiresPrimaryRead = credentialPurpose === "hosted_mcp_oauth";
+  if (requiresPrimaryRead) useCache = false;
+
   let isExtract =
     mode === RateLimiterMode.Extract ||
     mode === RateLimiterMode.ExtractStatus ||
@@ -241,12 +157,25 @@ async function getACUC(
     return acuc;
   }
 
-  const cacheKeyACUC = `acuc_${api_key}_${isExtract ? "extract" : "scrape"}`;
+  const cacheKeyACUC = `acuc_${credentialPurpose}_${api_key}_${isExtract ? "extract" : "scrape"}`;
 
   if (useCache) {
     const cachedACUC = await getValue(cacheKeyACUC);
     if (cachedACUC !== null) {
-      return JSON.parse(cachedACUC);
+      try {
+        return JSON.parse(cachedACUC);
+      } catch (error) {
+        logger.warn("Ignoring malformed ACUC cache entry", {
+          cacheKey: cacheKeyACUC,
+          error,
+        });
+        void deleteKey(cacheKeyACUC).catch(deleteError => {
+          logger.warn("Failed to delete malformed ACUC cache entry", {
+            cacheKey: cacheKeyACUC,
+            error: deleteError,
+          });
+        });
+      }
     }
   }
 
@@ -255,9 +184,13 @@ async function getACUC(
     let retries = 0;
     const maxRetries = 5;
     while (retries < maxRetries) {
-      const database = Math.random() > 2 / 3 ? dbRr : db;
+      const database = requiresPrimaryRead
+        ? db
+        : Math.random() > 2 / 3
+          ? dbRr
+          : db;
       try {
-        data = await authCreditUsageChunk(database, api_key);
+        data = await authCreditUsageChunk(database, api_key, credentialPurpose);
         break;
       } catch (error) {
         logger.warn(
@@ -290,7 +223,7 @@ async function getACUC(
 
     // NOTE: Should we cache null chunks? - mogery
     if (chunk !== null && useCache) {
-      setCachedACUC(api_key, isExtract, chunk);
+      setCachedACUC(api_key, isExtract, chunk, credentialPurpose);
     }
 
     return chunk;
@@ -416,13 +349,19 @@ export async function getACUCTeam(
 }
 
 export async function clearACUC(api_key: string): Promise<void> {
-  // Delete cache for all rate limiter modes
+  // Clear both purpose-qualified keys and the legacy unqualified keys during
+  // rollout so credential-purpose isolation cannot leave stale auth entries.
   const modes = [true, false];
+  const credentialPurposes = ["general", "hosted_mcp_oauth"] as const;
   await Promise.all(
-    modes.map(async mode => {
-      const cacheKey = `acuc_${api_key}_${mode ? "extract" : "scrape"}`;
-      await deleteKey(cacheKey);
-    }),
+    modes.flatMap(mode => [
+      deleteKey(`acuc_${api_key}_${mode ? "extract" : "scrape"}`),
+      ...credentialPurposes.map(credentialPurpose =>
+        deleteKey(
+          `acuc_${credentialPurpose}_${api_key}_${mode ? "extract" : "scrape"}`,
+        ),
+      ),
+    ]),
   );
 
   // Also clear the base cache key
@@ -459,7 +398,7 @@ const KEYLESS_SUSPICIOUS_IP_MESSAGE = `Unfortunately, your IP address looks susp
  */
 async function handleKeylessAuth(
   req,
-  mode: RateLimiterMode | undefined,
+  mode: RateLimiterMode,
   allowKeyless: boolean | undefined,
 ): Promise<AuthResponse> {
   const unauthorized: AuthResponse = {
@@ -601,7 +540,7 @@ async function handleKeylessAuth(
 export async function authenticateUser(
   req,
   res,
-  mode?: RateLimiterMode,
+  mode: RateLimiterMode,
   options?: { allowKeyless?: boolean },
 ): Promise<AuthResponse> {
   const bypassChunk = mockACUC();
@@ -618,10 +557,24 @@ export async function authenticateUser(
   })(req, res, mode, options);
 }
 
+/**
+ * Builds the rate limiter for an authenticated team from its Autumn rate-limit
+ * multiplier. Shared by the OAuth and API-key paths so their limiter setup
+ * can't diverge.
+ */
+async function buildAuthenticatedRateLimiter(
+  teamId: string,
+  orgId: string | null | undefined,
+  mode: RateLimiterMode,
+): Promise<RateLimiterRedis> {
+  const multiplier = await autumnService.getRateLimitMultiplier(teamId, orgId);
+  return getAutumnRateLimiter(mode, multiplier);
+}
+
 async function supaAuthenticateUser(
   req,
   res,
-  mode?: RateLimiterMode,
+  mode: RateLimiterMode,
   options?: { allowKeyless?: boolean },
 ): Promise<AuthResponse> {
   const authHeader =
@@ -659,16 +612,64 @@ async function supaAuthenticateUser(
   }
   if (token == config.PREVIEW_TOKEN) {
     if (mode == RateLimiterMode.CrawlStatus) {
-      rateLimiter = getRateLimiter(RateLimiterMode.CrawlStatus, null);
+      rateLimiter = getRateLimiter(RateLimiterMode.CrawlStatus);
     } else if (mode == RateLimiterMode.ExtractStatus) {
-      rateLimiter = getRateLimiter(RateLimiterMode.ExtractStatus, null);
+      rateLimiter = getRateLimiter(RateLimiterMode.ExtractStatus);
     } else {
-      rateLimiter = getRateLimiter(RateLimiterMode.Preview, null);
+      rateLimiter = getRateLimiter(RateLimiterMode.Preview);
     }
     teamId = `preview_${iptoken}`;
+  } else if (token.startsWith("fcmcp_")) {
+    const delegation = verifyMcpDelegatedCredential(
+      token,
+      config.MCP_DELEGATED_CREDENTIAL_SECRET,
+    );
+    if (!delegation) {
+      return {
+        success: false,
+        error: "Unauthorized: Invalid token",
+        status: 401,
+      };
+    }
+
+    const resolvedApi = parseApi(delegation.api_key);
+    chunk = await getACUC(
+      resolvedApi,
+      false,
+      false,
+      RateLimiterMode.Scrape,
+      "hosted_mcp_oauth",
+    );
+    if (chunk === null) {
+      return {
+        success: false,
+        error: "Unauthorized: Invalid token",
+        status: 401,
+      };
+    }
+
+    teamId = chunk.team_id;
+    subscriptionData = { team_id: teamId };
+    rateLimiter = await buildAuthenticatedRateLimiter(
+      teamId,
+      chunk.org_id,
+      mode,
+    );
   } else if (token.startsWith("fco_")) {
     // OAuth access token — resolve via introspection endpoint
-    const introspection = await resolveOAuthToken(token);
+    let introspection: OAuthIntrospectionResponse | null;
+    try {
+      introspection = await resolveOAuthToken(token);
+    } catch (error) {
+      if (error instanceof OAuthIntrospectionUnavailableError) {
+        return {
+          success: false,
+          error: "OAuth authentication is temporarily unavailable",
+          status: 503,
+        };
+      }
+      throw error;
+    }
     if (!introspection) {
       return {
         success: false,
@@ -676,12 +677,35 @@ async function supaAuthenticateUser(
         status: 401,
       };
     }
+    if (
+      introspection.credential_purpose !== undefined &&
+      introspection.credential_purpose !== "general"
+    ) {
+      return {
+        success: false,
+        error: "Unauthorized: Invalid token",
+        status: 401,
+      };
+    }
 
     // Use the resolved fc- API key to get the normal ACUC chunk
     const resolvedApi = parseApi(introspection.api_key);
-    chunk = await getACUC(resolvedApi, false, true, RateLimiterMode.Scrape);
+    chunk = await getACUC(
+      resolvedApi,
+      false,
+      true,
+      RateLimiterMode.Scrape,
+      "general",
+    );
 
     if (chunk === null) {
+      return {
+        success: false,
+        error: "Unauthorized: Invalid token",
+        status: 401,
+      };
+    }
+    if (chunk.team_id !== introspection.team_id) {
       return {
         success: false,
         error: "Unauthorized: Invalid token",
@@ -694,21 +718,11 @@ async function supaAuthenticateUser(
     subscriptionData = {
       team_id: teamId,
     };
-    if (isAutumnLimitsEnabled(chunk.org_id)) {
-      const rateLimitMultiplier = await autumnService.getRateLimitMultiplier(
-        teamId,
-        chunk.org_id,
-      );
-      rateLimiter = getAutumnRateLimiter(
-        mode ?? RateLimiterMode.Crawl,
-        rateLimitMultiplier,
-      );
-    } else {
-      rateLimiter = getRateLimiter(
-        mode ?? RateLimiterMode.Crawl,
-        chunk.rate_limits,
-      );
-    }
+    rateLimiter = await buildAuthenticatedRateLimiter(
+      teamId,
+      chunk.org_id,
+      mode,
+    );
   } else {
     normalizedApi = parseApi(token);
     if (!normalizedApiIsUuid(normalizedApi)) {
@@ -734,21 +748,11 @@ async function supaAuthenticateUser(
     subscriptionData = {
       team_id: teamId,
     };
-    if (isAutumnLimitsEnabled(chunk.org_id)) {
-      const rateLimitMultiplier = await autumnService.getRateLimitMultiplier(
-        teamId,
-        chunk.org_id,
-      );
-      rateLimiter = getAutumnRateLimiter(
-        mode ?? RateLimiterMode.Crawl,
-        rateLimitMultiplier,
-      );
-    } else {
-      rateLimiter = getRateLimiter(
-        mode ?? RateLimiterMode.Crawl,
-        chunk.rate_limits,
-      );
-    }
+    rateLimiter = await buildAuthenticatedRateLimiter(
+      teamId,
+      chunk.org_id,
+      mode,
+    );
   }
 
   if (chunk?.flags?.ipRestriction) {
@@ -791,7 +795,6 @@ async function supaAuthenticateUser(
     // logger.error(`Rate limit exceeded: ${rateLimiterRes}`, {
     //   teamId,
     //   mode,
-    //   rateLimits: chunk?.rate_limits,
     //   rateLimiterRes,
     // });
 

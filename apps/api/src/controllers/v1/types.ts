@@ -1255,32 +1255,9 @@ type Account = {
 export type AuthCreditUsageChunk = {
   api_key: string;
   api_key_id: number;
+  api_key_id_text?: string;
   team_id: string;
   org_id: string;
-  plan_priority: {
-    bucketLimit: number;
-    planModifier: number;
-  };
-  rate_limits: {
-    crawl: number;
-    scrape: number;
-    search: number;
-    map: number;
-    extract: number;
-    preview: number;
-    crawlStatus: number;
-    extractStatus: number;
-    extractAgentPreview?: number;
-    scrapeAgentPreview?: number;
-    browser?: number;
-    browserExecute?: number;
-    browserReplay?: number;
-    account?: number;
-    supportAsk?: number;
-    supportDocsSearch?: number;
-    research?: number;
-  };
-  concurrency: number;
   flags: TeamFlags;
 
   // appended on JS-side
