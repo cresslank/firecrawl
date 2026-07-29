@@ -68,8 +68,16 @@ import {
 import { activityController } from "../controllers/v1/activity";
 import {
   getTeamThreatProtectionController,
+  getTeamZscalerCategoriesController,
   putTeamThreatProtectionController,
+  syncTeamZscalerController,
+  testTeamZscalerConnectionController,
 } from "../controllers/v2/team-threat-protection";
+import {
+  getTeamSiemLoggingController,
+  putTeamSiemLoggingController,
+  testTeamSiemLoggingController,
+} from "../controllers/v2/team-siem-logging";
 import { supportProxyController } from "../controllers/v2/support-proxy";
 import { createResearchRouter } from "../controllers/v2/research-proxy";
 import {
@@ -437,6 +445,42 @@ v2Router.put(
   "/team/threat-protection",
   authMiddleware(RateLimiterMode.Account),
   wrap(putTeamThreatProtectionController),
+);
+
+v2Router.post(
+  "/team/threat-protection/zscaler/test-connection",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(testTeamZscalerConnectionController),
+);
+
+v2Router.get(
+  "/team/threat-protection/zscaler/categories",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(getTeamZscalerCategoriesController),
+);
+
+v2Router.post(
+  "/team/threat-protection/zscaler/sync",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(syncTeamZscalerController),
+);
+
+v2Router.get(
+  "/team/siem",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(getTeamSiemLoggingController),
+);
+
+v2Router.put(
+  "/team/siem",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(putTeamSiemLoggingController),
+);
+
+v2Router.post(
+  "/team/siem/test",
+  authMiddleware(RateLimiterMode.Account),
+  wrap(testTeamSiemLoggingController),
 );
 
 v2Router.post(

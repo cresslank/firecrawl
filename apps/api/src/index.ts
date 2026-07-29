@@ -103,6 +103,8 @@ const { addQueue, removeQueue, setQueues, replaceQueues } = createBullBoard({
     new BullMQAdapter(getDeepResearchQueue()),
     new BullMQAdapter(getBillingQueue()),
     new BullMQAdapter(getPrecrawlQueue()),
+    // SIEM audit delivery runs on RabbitMQ; inspect it in the broker's
+    // management UI, not here.
   ],
   serverAdapter: serverAdapter,
 });

@@ -36,10 +36,17 @@ RUN apt-get update && apt-get install -y \
 # FoundationDB client library (libfdb_c + headers), needed by the
 # `foundationdb` npm package at install time on arches without prebuilds.
 ARG FDB_VERSION=7.3.79
+ARG FDB_SHA256_AMD64=52cc22565c42e7eb60c08f395a0626483735c311be0d80b7c035ac8e328e2fff
+ARG FDB_SHA256_AARCH64=52de6931803c322e131c5e84cebb35d647237ef51a7df3df6fbe32b9b971e7fb
 RUN ARCH=$(dpkg --print-architecture) && \
-    case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
+    case "$ARCH" in \
+      amd64) FDB_ARCH=amd64; FDB_SHA256="$FDB_SHA256_AMD64" ;; \
+      arm64) FDB_ARCH=aarch64; FDB_SHA256="$FDB_SHA256_AARCH64" ;; \
+      *) echo "Unsupported FoundationDB architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
       "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+    echo "$FDB_SHA256  /tmp/fdb-clients.deb" | sha256sum -c - && \
     dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
 # Copy a pinned Rust toolchain instead of running curl | sh during the build.
@@ -93,10 +100,17 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
 
 # FoundationDB client library (libfdb_c + fdbcli)
 ARG FDB_VERSION=7.3.79
+ARG FDB_SHA256_AMD64=52cc22565c42e7eb60c08f395a0626483735c311be0d80b7c035ac8e328e2fff
+ARG FDB_SHA256_AARCH64=52de6931803c322e131c5e84cebb35d647237ef51a7df3df6fbe32b9b971e7fb
 RUN ARCH=$(dpkg --print-architecture) && \
-    case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
+    case "$ARCH" in \
+      amd64) FDB_ARCH=amd64; FDB_SHA256="$FDB_SHA256_AMD64" ;; \
+      arm64) FDB_ARCH=aarch64; FDB_SHA256="$FDB_SHA256_AARCH64" ;; \
+      *) echo "Unsupported FoundationDB architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
       "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+    echo "$FDB_SHA256  /tmp/fdb-clients.deb" | sha256sum -c - && \
     dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
 EXPOSE 8080
