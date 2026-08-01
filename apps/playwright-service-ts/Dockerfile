@@ -30,9 +30,14 @@ RUN pnpm prune --prod && \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
+RUN chown -R node:node /usr/src/app \
+  && chmod -R a+rX /usr/local/share/playwright
+
 ARG PORT
 ENV PORT=${PORT}
 
 EXPOSE ${PORT}
+
+USER node
 
 CMD ["node", "dist/api.js"]

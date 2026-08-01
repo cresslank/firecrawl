@@ -14,7 +14,11 @@ import {
   reserveKeylessCredits,
 } from "../../lib/keyless";
 import { v7 as uuidv7 } from "uuid";
-import { logSearch, logRequest } from "../../services/logging/log_job";
+import {
+  logSearch,
+  logRequest,
+  logResearchEndpoint,
+} from "../../services/logging/log_job";
 import { logger as _logger } from "../../lib/logger";
 import { ScrapeJobTimeoutError } from "../../lib/error";
 import { z } from "zod";
@@ -31,9 +35,12 @@ import { applyAgentAuthDiscoveryHeader } from "../../lib/agent-auth-discovery";
 import { resolveThreatProtection } from "../../lib/threat-protection/request";
 import {
   actionTypesOf,
+  checkKeyEndpointRestriction,
   checkKeyFormatRestriction,
   formatTypesOf,
 } from "../../lib/key-restriction";
+import { wantsDeveloperCategory } from "../../search/developer";
+import { requestOrigin } from "../../lib/request-origin";
 
 export async function searchController(
   req: RequestWithAuth<{}, SearchResponse, SearchRequest>,
@@ -65,7 +72,31 @@ export async function searchController(
   let reconciledKeylessCredits = false;
 
   try {
+    const rawOrigin =
+      typeof req.body?.origin === "string" ? req.body.origin : undefined;
     req.body = searchRequestSchema.parse(req.body);
+
+    // Beta gate: the developer category is limited to teams with the
+    // developerBeta flag. Fail closed and silent — an unentitled team gets
+    // normal web results with the category dropped, no error. Keyless callers
+    // have no org and so no flags, which makes them unentitled. Runs before
+    // the key-restriction check below so an unentitled team is never told its
+    // key lacks access to a category that is about to be removed anyway.
+    if (wantsDeveloperCategory(req.body.categories as CategoryOption[])) {
+      if (req.acuc?.flags?.developerBeta !== true) {
+        // Expected, high-volume path (keyless + unentitled teams) — left
+        // unlogged on purpose to avoid log spam. See PR discussion.
+        // filter() widens the union that categories is declared as (either an
+        // all-string or an all-object array), so the result is cast back to
+        // assign it.
+        req.body.categories = (req.body.categories as CategoryOption[]).filter(
+          category =>
+            typeof category === "string"
+              ? category !== "developer"
+              : category.type !== "developer",
+        ) as typeof req.body.categories;
+      }
+    }
 
     const requestedFormats = formatTypesOf(req.body.scrapeOptions?.formats);
     const keyRestriction = await checkKeyFormatRestriction(
@@ -83,6 +114,20 @@ export async function searchController(
         success: false,
         error: keyRestriction.error,
       });
+    }
+
+    if (wantsDeveloperCategory(req.body.categories as CategoryOption[])) {
+      const developerRestriction = await checkKeyEndpointRestriction(
+        "/v2/developer/search",
+        req.acuc?.api_key_id,
+        req.acuc?.flags ?? null,
+      );
+      if (!developerRestriction.allowed) {
+        return res.status(developerRestriction.status).json({
+          success: false,
+          error: developerRestriction.error,
+        });
+      }
     }
 
     if (
@@ -283,6 +328,33 @@ export async function searchController(
       },
       false,
     );
+
+    if (wantsDeveloperCategory(req.body.categories as CategoryOption[])) {
+      logResearchEndpoint({
+        table: "code_searches",
+        id: uuidv7(),
+        request_id: agentRequestId ?? jobId,
+        team_id: req.auth.team_id,
+        target: req.body.query,
+        options: {
+          origin: requestOrigin({ origin: rawOrigin }, req),
+          integration: req.body.integration ?? null,
+          api_version: "v2",
+          categories: req.body.categories,
+          via: "search_category",
+        },
+        response: null,
+        num_results: result.response.developer?.length ?? 0,
+        time_taken: timeTakenInSeconds,
+        credits_cost: 0,
+        is_successful: true,
+        zeroDataRetention,
+      }).catch(ledgerError => {
+        logger.warn("Failed to log developer category usage", {
+          error: ledgerError,
+        });
+      });
+    }
 
     const totalRequestTime = new Date().getTime() - middlewareStartTime;
     const controllerTime = new Date().getTime() - controllerStartTime;

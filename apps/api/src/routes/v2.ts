@@ -79,7 +79,10 @@ import {
   testTeamSiemLoggingController,
 } from "../controllers/v2/team-siem-logging";
 import { supportProxyController } from "../controllers/v2/support-proxy";
-import { createResearchRouter } from "../controllers/v2/research-proxy";
+import {
+  createDeveloperRouter,
+  createResearchRouter,
+} from "../controllers/v2/research-proxy";
 import {
   scrapeInteractController,
   scrapeStopInteractiveBrowserController,
@@ -641,5 +644,17 @@ if (config.RESEARCH_PROXY_URL) {
     "/research",
     authMiddleware(RateLimiterMode.Research),
     createResearchRouter({ legacy: true }),
+  );
+
+  v2Router.use(
+    "/search/developer",
+    authMiddleware(RateLimiterMode.DeveloperSearch, { allowKeyless: true }),
+    createDeveloperRouter({ root: true }),
+  );
+
+  v2Router.use(
+    "/developer",
+    authMiddleware(RateLimiterMode.DeveloperSearch),
+    createDeveloperRouter(),
   );
 }

@@ -1567,6 +1567,7 @@ export type TeamFlags = {
   researchBeta?: boolean;
   menuBeta?: boolean;
   enrichBeta?: boolean;
+  developerBeta?: boolean;
   professionalProfileCompanyDataBeta?: boolean;
   organizationDataSourceAccess?: Record<
     string,
@@ -1909,6 +1910,53 @@ const pdfCategoryOptions = z.strictObject({
   type: z.literal("pdf"),
 });
 
+const developerCategoryOptions = z.strictObject({
+  type: z.literal("developer"),
+});
+
+const developerCategoryAliases = new Set([
+  "repo",
+  "code",
+  "developer",
+  "docs",
+  "devdex",
+  "repo_search",
+  "developer_index",
+]);
+
+function isDeveloperCategoryAlias(value: unknown): value is string {
+  return typeof value === "string" && developerCategoryAliases.has(value);
+}
+
+function normalizeDeveloperCategoryAliases(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  let seenString = false;
+  let seenObject = false;
+  const normalized: unknown[] = [];
+  for (const category of value) {
+    if (isDeveloperCategoryAlias(category)) {
+      if (seenString) continue;
+      seenString = true;
+      normalized.push("developer");
+    } else if (
+      typeof category === "object" &&
+      category !== null &&
+      isDeveloperCategoryAlias((category as { type?: unknown }).type)
+    ) {
+      if (Object.keys(category).length === 1) {
+        if (seenObject) continue;
+        seenObject = true;
+        normalized.push({ type: "developer" });
+      } else {
+        normalized.push({ ...category, type: "developer" });
+      }
+    } else {
+      normalized.push(category);
+    }
+  }
+  return normalized;
+}
+
 const searchDomainSchema = z
   .string()
   .trim()
@@ -1943,18 +1991,20 @@ export const searchRequestSchema = z
       .optional()
       .prefault(["web"]),
     categories: z
-      .union([
-        // Array of strings (simple format)
-        z.array(z.enum(["github", "research", "pdf"])),
-        // Array of objects (advanced format)
-        z.array(
-          z.union([
-            githubCategoryOptions,
-            researchCategoryOptions,
-            pdfCategoryOptions,
-          ]),
-        ),
-      ])
+      .preprocess(
+        normalizeDeveloperCategoryAliases,
+        z.union([
+          z.array(z.enum(["github", "research", "pdf", "developer"])),
+          z.array(
+            z.union([
+              githubCategoryOptions,
+              researchCategoryOptions,
+              pdfCategoryOptions,
+              developerCategoryOptions,
+            ]),
+          ),
+        ]),
+      )
       .optional(),
     includeDomains: z.array(searchDomainSchema).optional(),
     excludeDomains: z.array(searchDomainSchema).optional(),
@@ -2085,6 +2135,10 @@ export const searchRequestSchema = z
             case "pdf":
               return {
                 type: "pdf" as const,
+              };
+            case "developer":
+              return {
+                type: "developer" as const,
               };
             default:
               return { type: c as any };
