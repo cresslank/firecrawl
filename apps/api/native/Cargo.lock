@@ -654,6 +654,8 @@ dependencies = [
  "calamine",
  "cfb",
  "chrono",
+ "codepage",
+ "encoding_rs",
  "kuchikiki",
  "lol_html",
  "maud",
