@@ -90,6 +90,8 @@ function getContentTypeFromDocumentType(documentType: DocumentType): string {
     case DocumentType.Xlsx:
       return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   }
+
+  throw new Error(`Unsupported document type: ${documentType}`);
 }
 
 function isValidDocumentContentType(contentType: string | null): boolean {
