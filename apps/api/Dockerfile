@@ -79,8 +79,15 @@ RUN test -s dist/src/harness.js && \
     test -s dist/src/controllers/v0/crawl-status.js && \
     printf '%s\n' "$GIT_SHA" > BUILD_SHA
 
-# Remove dev dependencies
-RUN pnpm prune --prod --ignore-scripts
+# Remove dev dependencies. pnpm prune in this workspace can retain the
+# TypeScript 6/7 compiler packages and their native compiler binaries under
+# node_modules/.pnpm even after pruning. They are build-time-only and must not
+# ship in the runtime image, where their embedded Go toolchains create an
+# unnecessary vulnerability surface.
+RUN pnpm prune --prod --ignore-scripts && \
+    rm -rf node_modules/typescript node_modules/typescript-7 && \
+    find node_modules/.pnpm -maxdepth 1 -type d -name '@typescript+typescript*' -prune -exec rm -rf {} + && \
+    find node_modules/.pnpm -maxdepth 1 -type d -name 'typescript@*' -prune -exec rm -rf {} +
 
 # Runtime stage
 FROM base AS runtime
