@@ -80,12 +80,14 @@ RUN test -s dist/src/harness.js && \
     printf '%s\n' "$GIT_SHA" > BUILD_SHA
 
 # Remove dev dependencies. pnpm prune in this workspace can retain the
-# TypeScript 7 compiler package and its native compiler binary under
+# TypeScript 7 compiler package and its optional native compiler binary under
 # node_modules/.pnpm even after pruning. TypeScript 6 is a runtime dependency
-# of the deterministic JSON pipeline and must remain installed.
+# of the deterministic JSON pipeline and must remain installed; its JavaScript
+# API is retained while optional native compiler packages are not.
 RUN pnpm prune --prod --ignore-scripts && \
     rm -rf node_modules/typescript-7 && \
     find node_modules/.pnpm -maxdepth 1 -type d -name 'typescript@7.*' -prune -exec rm -rf {} + && \
+    find node_modules/.pnpm -maxdepth 1 -type d -name '@typescript+typescript-linux-*' -prune -exec rm -rf {} + && \
     find node_modules/.pnpm -maxdepth 3 -type d -name 'typescript-7' -prune -exec rm -rf {} +
 
 # Runtime stage
