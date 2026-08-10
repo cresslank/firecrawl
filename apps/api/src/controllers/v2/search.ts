@@ -76,28 +76,6 @@ export async function searchController(
       typeof req.body?.origin === "string" ? req.body.origin : undefined;
     req.body = searchRequestSchema.parse(req.body);
 
-    // Beta gate: the developer category is limited to teams with the
-    // developerBeta flag. Fail closed and silent — an unentitled team gets
-    // normal web results with the category dropped, no error. Keyless callers
-    // have no org and so no flags, which makes them unentitled. Runs before
-    // the key-restriction check below so an unentitled team is never told its
-    // key lacks access to a category that is about to be removed anyway.
-    if (wantsDeveloperCategory(req.body.categories as CategoryOption[])) {
-      if (req.acuc?.flags?.developerBeta !== true) {
-        // Expected, high-volume path (keyless + unentitled teams) — left
-        // unlogged on purpose to avoid log spam. See PR discussion.
-        // filter() widens the union that categories is declared as (either an
-        // all-string or an all-object array), so the result is cast back to
-        // assign it.
-        req.body.categories = (req.body.categories as CategoryOption[]).filter(
-          category =>
-            typeof category === "string"
-              ? category !== "developer"
-              : category.type !== "developer",
-        ) as typeof req.body.categories;
-      }
-    }
-
     const requestedFormats = formatTypesOf(req.body.scrapeOptions?.formats);
     const keyRestriction = await checkKeyFormatRestriction(
       requestedFormats,
@@ -235,9 +213,9 @@ export async function searchController(
       );
       if (!reservation.ok) {
         applyAgentAuthDiscoveryHeader(res);
-        return res.status(429).json(
-          await keylessLimitBody(req.auth.team_id, "v2_search"),
-        );
+        return res
+          .status(429)
+          .json(await keylessLimitBody(req.auth.team_id, "v2_search"));
       }
       reservedKeylessCredits = projectedKeylessCredits;
     }
@@ -251,6 +229,7 @@ export async function searchController(
         lang: req.body.lang,
         country: req.body.country,
         location: req.body.location,
+        safe: req.body.safe,
         sources: req.body.sources as Array<{ type: string }>,
         categories: req.body.categories as CategoryOption[],
         includeDomains: req.body.includeDomains,

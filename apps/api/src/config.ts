@@ -31,6 +31,14 @@ const configSchema = z.object({
   FIRECRAWL_DASHBOARD_URL: z.url().default("https://www.firecrawl.dev"),
   SUPPORT_AGENT_URL: z.string().url().optional(),
   SUPPORT_AGENT_VERCEL_BYPASS_SECRET: z.string().optional(),
+  FIREBRAIN_TRACKS_URL: z.preprocess(
+    v => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
+  FIREBRAIN_TRACKS_API_KEY: z.preprocess(
+    v => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().trim().optional(),
+  ),
   RESEARCH_PROXY_URL: z.string().url().optional(),
   LABS_SEARCH_URL: z.string().url().optional(),
   LABS_SEARCH_SECRET: z.string().optional(),
@@ -46,6 +54,10 @@ const configSchema = z.object({
   // forward the real client IP for keyless rate-limiting via the
   // `x-firecrawl-keyless-ip` header. Untrusted callers can't override their IP.
   KEYLESS_PROXY_SECRET: z.string().optional(),
+  // Dedicated HMAC key for joining keyless quota-exhaustion events to the
+  // existing privacy-controlled conversion pipeline. Never use the proxy or
+  // credential secrets here: this value is only an analytics pseudonymizer.
+  KEYLESS_CONVERSION_HMAC_SECRET: emptyStringAsUndefined(z.string().min(32)),
   // Dedicated signer/verifier secret for short-lived MCP delegated credentials.
   // Keep separate from KEYLESS_PROXY_SECRET because delegated credentials can
   // authorize billed requests for a managed OAuth connection.

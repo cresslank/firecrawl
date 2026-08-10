@@ -1005,6 +1005,8 @@ export type Document = {
   description?: string;
   url?: string;
   markdown?: string;
+  /** Physical PDF pages, populated by the v2 pageMarkdown parser option. */
+  pages?: Array<{ pageNumber: number; markdown: string }>;
   html?: string;
   rawHtml?: string;
   links?: string[];
@@ -1313,8 +1315,8 @@ export type TeamFlags = {
   searchFeedbackOptOut?: boolean;
   researchBeta?: boolean;
   enrichBeta?: boolean;
-  developerBeta?: boolean;
   labsSearch?: boolean;
+  exchangeRetrieve?: boolean;
   professionalProfileCompanyDataBeta?: boolean;
   organizationDataSourceAccess?: Record<
     string,
