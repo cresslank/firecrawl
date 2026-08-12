@@ -17,6 +17,7 @@ COPY --from=gosu-build /go/bin/gosu /usr/local/bin/gosu
 
 # Install pg_cron for the specified Postgres major version
 RUN set -eux; \
+    printf 'Acquire::http::User-Agent "Debian docker-build";\n' > /etc/apt/apt.conf.d/99user-agent; \
     apt-get update; \
     apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
