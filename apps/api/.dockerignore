@@ -3,3 +3,9 @@
 **/target/
 .env
 *.csv
+# Host leftover NAPI artifacts. If these are copied after `pnpm install`, they
+# overwrite the types/bindings generated for the current native crate and
+# TypeScript fails (e.g. missing convertDocumentToMarkdown).
+native/index.d.ts
+native/index.js
+native/*.node

@@ -1,7 +1,7 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-ARG GOLANG_IMAGE=golang:1.25.12-trixie@sha256:d41da62c5fa95d88bac8ea732451c00f76aefc5ba4931b694879f4ae15676db8
+ARG GOLANG_IMAGE=golang:1.25.13-trixie@sha256:1d7ec61c055b5e4c23bed5e87a0d4f6b543558b0c41744c74700a757e8cb4557
 ARG POSTGRES_IMAGE=postgres:17.10-trixie@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 FROM ${GOLANG_IMAGE} AS gosu-build
 RUN /usr/local/go/bin/go install github.com/tianon/gosu@v0.0.0-20250923190938-6456aaa0f3c8
@@ -17,6 +17,7 @@ COPY --from=gosu-build /go/bin/gosu /usr/local/bin/gosu
 
 # Install pg_cron for the specified Postgres major version
 RUN set -eux; \
+    printf 'Acquire::http::User-Agent "Debian docker-build";\n' > /etc/apt/apt.conf.d/99user-agent; \
     apt-get update; \
     apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \

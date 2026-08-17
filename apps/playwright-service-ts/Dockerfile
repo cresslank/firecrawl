@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM node:22.23.1-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba AS base
 
+# See apps/api/Dockerfile: this network blackholes Debian's default APT UA.
+RUN printf 'Acquire::http::User-Agent "Debian docker-build";\n' > /etc/apt/apt.conf.d/99user-agent
+
 ARG GIT_SHA=unknown
 LABEL org.opencontainers.image.revision=$GIT_SHA
 

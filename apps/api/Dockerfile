@@ -1,6 +1,12 @@
 # syntax=docker/dockerfile:1
 FROM node:22.23.1-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba AS base
 
+# This network/CDN blackholes HTTP requests with Debian's default
+# `Debian APT-HTTP/1.3` User-Agent. Pin a generic UA so image rebuilds can
+# reach deb.debian.org without switching the slim image to HTTPS (no CA store
+# yet) or disabling Verify-Peer.
+RUN printf 'Acquire::http::User-Agent "Debian docker-build";\n' > /etc/apt/apt.conf.d/99user-agent
+
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV CI=true
