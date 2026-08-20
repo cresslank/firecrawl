@@ -149,7 +149,7 @@ services:
         compress: "true"
 
   rabbitmq:
-    image: rabbitmq:4.3.2-management@sha256:c1e33461287f4c53049ce525575f0df77b2a00a88e2593776afbb6c1489bdb81
+    image: rabbitmq:4.3.5-management@sha256:397fde82bc04522d88680b57cbf5d70caae715a76c957404e52e3f0fa056b8f3
     networks:
       - backend
     command: rabbitmq-server
