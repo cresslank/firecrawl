@@ -103,7 +103,9 @@ function buildSmartScrapeWrapperPrompt(userPrompt: string | undefined): string {
     "If shouldUseSmartscrape is false, smartscrape_reasoning and smartscrape_prompt must be null. " +
     "Do not omit any required key. Do not add markdown fences or commentary.";
 
-  return userPrompt ? `${wrapperInstructions}\n\n${userPrompt}` : wrapperInstructions;
+  return userPrompt
+    ? `${wrapperInstructions}\n\n${userPrompt}`
+    : wrapperInstructions;
 }
 
 function prepareSmartScrapeSchema(

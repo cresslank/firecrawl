@@ -74,6 +74,8 @@ describe("extractData SmartScrape wrapper prompt", () => {
     expect(call.options.prompt).toContain("shouldUseSmartscrape");
     expect(call.options.prompt).toContain("smartscrape_reasoning");
     expect(call.options.prompt).toContain("smartscrape_prompt");
-    expect(call.options.prompt).toContain("Extract the page title from this page.");
+    expect(call.options.prompt).toContain(
+      "Extract the page title from this page.",
+    );
   });
 });

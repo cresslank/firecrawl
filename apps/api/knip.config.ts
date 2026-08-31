@@ -21,9 +21,7 @@ const config: KnipConfig = {
     // the provider/verdict types are consumed by the core-lib branch.
     "src/lib/threat-protection/types.ts",
   ],
-  // The compiler is invoked by path from tsc-watch scripts, which Knip does
-  // not trace as a package dependency.
-  ignoreDependencies: ["undici-types", "stripe", "typescript-7"],
+  ignoreDependencies: ["undici-types", "stripe"],
 };
 
 export default config;
