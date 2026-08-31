@@ -77,14 +77,14 @@ const multiSmartScrapeWrapperSchemaDefinition = {
           },
           ...commonReasoningPromptProperties, // Include shared reasoning/prompt properties here too
         },
-        // required: ["page_index", "smartscrape_reasoning", "smartscrape_prompt"], // If needed per step
-        // additionalProperties: false,
+        required: ["page_index", "smartscrape_reasoning", "smartscrape_prompt"],
+        additionalProperties: false,
       },
     },
     // extractedData will be added dynamically
   },
   additionalProperties: false,
-  required: ["extractedData", "shouldUseSmartscrape"],
+  required: ["extractedData", "shouldUseSmartscrape", "smartScrapePages"],
 };
 
 /**
@@ -94,14 +94,24 @@ const multiSmartScrapeWrapperSchemaDefinition = {
  * @param logger Winston logger instance.
  * @returns An object containing the schema to use for the LLM call and whether wrapping occurred.
  */
-function buildSmartScrapeWrapperPrompt(userPrompt: string | undefined): string {
-  const wrapperInstructions =
-    "Return one valid JSON object with exactly these top-level keys: " +
-    "extractedData, shouldUseSmartscrape, smartscrape_reasoning, smartscrape_prompt. " +
-    "Set extractedData to the requested extraction object. " +
-    "Set shouldUseSmartscrape to false unless the requested data is missing from the provided markdown and user-like interactions are required. " +
-    "If shouldUseSmartscrape is false, smartscrape_reasoning and smartscrape_prompt must be null. " +
-    "Do not omit any required key. Do not add markdown fences or commentary.";
+function buildSmartScrapeWrapperPrompt(
+  userPrompt: string | undefined,
+  isSingleUrl: boolean,
+): string {
+  const wrapperInstructions = isSingleUrl
+    ? "Return one valid JSON object with exactly these top-level keys: " +
+      "extractedData, shouldUseSmartscrape, smartscrape_reasoning, smartscrape_prompt. " +
+      "Set extractedData to the requested extraction object. " +
+      "Set shouldUseSmartscrape to false unless the requested data is missing from the provided markdown and user-like interactions are required. " +
+      "If shouldUseSmartscrape is false, smartscrape_reasoning and smartscrape_prompt must be null. " +
+      "Do not omit any required key. Do not add markdown fences or commentary."
+    : "Return one valid JSON object with exactly these top-level keys: " +
+      "extractedData, shouldUseSmartscrape, smartScrapePages. " +
+      "Set extractedData to the requested extraction object. " +
+      "Set shouldUseSmartscrape to false unless requested data is missing from one or more provided pages and user-like interactions are required. " +
+      "If shouldUseSmartscrape is false, smartScrapePages must be an empty array. " +
+      "Otherwise, include one smartScrapePages entry per page that needs interaction. Each entry must contain exactly page_index, smartscrape_reasoning, and smartscrape_prompt; page_index is the zero-based index of the corresponding URL. " +
+      "Do not omit any required key. Do not add markdown fences or commentary.";
 
   return userPrompt
     ? `${wrapperInstructions}\n\n${userPrompt}`
@@ -370,7 +380,10 @@ export async function extractData({
     options: {
       ...extractOptions.options,
       schema: schemaToUse,
-      prompt: buildSmartScrapeWrapperPrompt(extractOptions.options.prompt),
+      prompt: buildSmartScrapeWrapperPrompt(
+        extractOptions.options.prompt,
+        isSingleUrl,
+      ),
     },
   };
   // console.log("schema", schema);
@@ -469,7 +482,7 @@ export async function extractData({
           }),
         ];
       } else {
-        const pages = extract?.smartscrapePages ?? [];
+        const pages = extract?.smartScrapePages ?? [];
         //do it async promiseall instead
         if (pages.length > 100) {
           logger.warn(
