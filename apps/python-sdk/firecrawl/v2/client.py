@@ -14,6 +14,8 @@ from .types import (
     Document,
     SearchRequest,
     SearchData,
+    DeveloperSearchResponse,
+    DeveloperSearchType,
     SourceOption,
     CategoryOption,
     CrawlRequest,
@@ -60,6 +62,7 @@ from .methods import parse as parse_module
 from .methods import crawl as crawl_module  
 from .methods import batch as batch_module
 from .methods import search as search_module
+from .methods import developer as developer_module
 from .methods import map as map_module
 from .methods import batch as batch_methods
 from .methods import usage as usage_methods
@@ -148,6 +151,7 @@ class FirecrawlClient:
         self,
         url: str,
         *,
+        auto_resume: Optional[bool] = None,
         formats: Optional[List['FormatOption']] = None,
         headers: Optional[Dict[str, str]] = None,
         include_tags: Optional[List[str]] = None,
@@ -231,7 +235,7 @@ class FirecrawlClient:
                 integration=integration,
             ).items() if v is not None}
         ) if any(v is not None for v in [formats, headers, include_tags, exclude_tags, only_main_content, timeout, wait_for, mobile, parsers, actions, location, skip_tls_verification, remove_base64_images, fast_mode, use_mock, block_ads, proxy, max_age, store_in_cache, lockdown, threat_protection, profile, audit_metadata, integration]) else None
-        return scrape_module.scrape(self.http_client, url, options)
+        return scrape_module.scrape(self.http_client, url, options, auto_resume=auto_resume)
 
     # Research paper index (/v2/search/research)
     @doc(CLIENT_SEARCH_PAPERS_DOC)
@@ -459,6 +463,43 @@ class FirecrawlClient:
         )
 
         return search_module.search(self.http_client, request)
+
+    def developer_search(
+        self,
+        query: str,
+        *,
+        k: Optional[int] = None,
+        passages: Optional[int] = None,
+        types: Optional[List[DeveloperSearchType]] = None,
+        repos: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
+        language: Optional[str] = None,
+        topic: Optional[List[str]] = None,
+        license: Optional[str] = None,
+        min_stars: Optional[int] = None,
+        max_stars: Optional[int] = None,
+        archived: Optional[bool] = None,
+        fork: Optional[bool] = None,
+        skills: Optional[Literal["only"]] = None,
+    ) -> DeveloperSearchResponse:
+        """Search the dedicated developer index with full filters and evidence."""
+        return developer_module.developer_search(
+            self.http_client,
+            query,
+            k=k,
+            passages=passages,
+            types=types,
+            repos=repos,
+            sources=sources,
+            language=language,
+            topic=topic,
+            license=license,
+            min_stars=min_stars,
+            max_stars=max_stars,
+            archived=archived,
+            fork=fork,
+            skills=skills,
+        )
     
     def crawl(
         self,
@@ -1357,7 +1398,8 @@ class FirecrawlClient:
         integration: Optional[str] = None,
         max_credits: Optional[int] = None,
         strict_constrain_to_urls: Optional[bool] = None,
-        model: Optional[Literal["spark-1-pro", "spark-1-mini"]] = None,
+        model: Optional[Literal["spark-1-pro", "spark-1-mini", "spark-2"]] = None,
+        effort: Optional[Literal["low", "medium", "high"]] = None,
         webhook: Optional[Union[str, AgentWebhookConfig]] = None,
         threat_protection: Optional[ThreatProtectionOptions] = None,
         audit_metadata: Optional[AuditMetadata] = None,
@@ -1370,7 +1412,8 @@ class FirecrawlClient:
             schema: Target JSON schema for the output (dict or Pydantic BaseModel)
             integration: Integration tag/name
             max_credits: Maximum credits to use (optional)
-            model: Model to use for the agent ("spark-1-pro" or "spark-1-mini")
+            model: Model to use for the agent ("spark-1-pro" (default), "spark-1-mini", or "spark-2")
+            effort: Reasoning effort for the agent ("low", "medium", or "high")
             webhook: Webhook URL or configuration for notifications
             threat_protection: Enterprise per-request override of the team's
                 threat protection policy
@@ -1387,6 +1430,7 @@ class FirecrawlClient:
             max_credits=max_credits,
             strict_constrain_to_urls=strict_constrain_to_urls,
             model=model,
+            effort=effort,
             webhook=webhook,
             threat_protection=threat_protection,
             audit_metadata=audit_metadata,
@@ -1403,7 +1447,8 @@ class FirecrawlClient:
         timeout: Optional[int] = None,
         max_credits: Optional[int] = None,
         strict_constrain_to_urls: Optional[bool] = None,
-        model: Optional[Literal["spark-1-pro", "spark-1-mini"]] = None,
+        model: Optional[Literal["spark-1-pro", "spark-1-mini", "spark-2"]] = None,
+        effort: Optional[Literal["low", "medium", "high"]] = None,
         webhook: Optional[Union[str, AgentWebhookConfig]] = None,
         threat_protection: Optional[ThreatProtectionOptions] = None,
         audit_metadata: Optional[AuditMetadata] = None,
@@ -1418,7 +1463,8 @@ class FirecrawlClient:
             poll_interval: Seconds between status checks
             timeout: Maximum seconds to wait (None for no timeout)
             max_credits: Maximum credits to use (optional)
-            model: Model to use for the agent ("spark-1-pro" or "spark-1-mini")
+            model: Model to use for the agent ("spark-1-pro" (default), "spark-1-mini", or "spark-2")
+            effort: Reasoning effort for the agent ("low", "medium", or "high")
             webhook: Webhook URL or configuration for notifications
             threat_protection: Enterprise per-request override of the team's
                 threat protection policy
@@ -1437,6 +1483,7 @@ class FirecrawlClient:
             max_credits=max_credits,
             strict_constrain_to_urls=strict_constrain_to_urls,
             model=model,
+            effort=effort,
             webhook=webhook,
             threat_protection=threat_protection,
             audit_metadata=audit_metadata,
@@ -1463,6 +1510,45 @@ class FirecrawlClient:
             True if the agent was cancelled
         """
         return agent_module.cancel_agent(self.http_client, job_id)
+
+    def list_agents(self, *, before: Optional[int] = None):
+        """List agent runs, most recent first.
+
+        Pages are fixed at 20 runs. To fetch the next page, pass the `before`
+        value from the previous page's `next` URL. This method does not
+        auto-paginate.
+
+        Args:
+            before: Only return agent runs created before this unix ms timestamp
+
+        Returns:
+            AgentListResponse with the list of agent runs and optional next URL
+        """
+        return agent_module.list_agents(self.http_client, before=before)
+
+    def get_agent_trace(self, job_id: str, *, live_view: bool = False):
+        """Get the execution trace of an agent job (spark-2 runs only).
+
+        Args:
+            job_id: Agent job ID
+            live_view: Also include currently active browser sessions with live view URLs
+
+        Returns:
+            AgentTraceResponse with the ordered trace events
+        """
+        return agent_module.get_agent_trace(self.http_client, job_id, live_view=live_view)
+
+    def get_agent_snapshot(self, job_id: str, snapshot_id: str):
+        """Get the full content of an artifact snapshot referenced by a trace event.
+
+        Args:
+            job_id: Agent job ID
+            snapshot_id: Snapshot ID from an artifact.updated trace event
+
+        Returns:
+            AgentSnapshotResponse with the snapshot content
+        """
+        return agent_module.get_agent_snapshot(self.http_client, job_id, snapshot_id)
 
     def get_concurrency(self):
         """Get current concurrency and maximum allowed for this team/key (v2)."""

@@ -1,7 +1,15 @@
 from typing import Any, Dict, List, Literal, Optional, Union
 import time
 
-from ..types import AgentResponse, AgentWebhookConfig, AuditMetadata, ThreatProtectionOptions
+from ..types import (
+    AgentListResponse,
+    AgentResponse,
+    AgentSnapshotResponse,
+    AgentTraceResponse,
+    AgentWebhookConfig,
+    AuditMetadata,
+    ThreatProtectionOptions,
+)
 from ..utils.http_client import HttpClient
 from ..utils.error_handler import handle_response_error
 from ..utils.validation import _normalize_schema
@@ -15,7 +23,8 @@ def _prepare_agent_request(
     integration: Optional[str] = None,
     max_credits: Optional[int] = None,
     strict_constrain_to_urls: Optional[bool] = None,
-    model: Optional[Literal["spark-1-pro", "spark-1-mini"]] = None,
+    model: Optional[Literal["spark-1-pro", "spark-1-mini", "spark-2"]] = None,
+    effort: Optional[Literal["low", "medium", "high"]] = None,
     webhook: Optional[Union[str, AgentWebhookConfig]] = None,
     threat_protection: Optional[ThreatProtectionOptions] = None,
     audit_metadata: Optional[AuditMetadata] = None,
@@ -41,6 +50,8 @@ def _prepare_agent_request(
         body["strictConstrainToURLs"] = strict_constrain_to_urls
     if model is not None:
         body["model"] = model
+    if effort is not None:
+        body["effort"] = effort
     if webhook is not None:
         if isinstance(webhook, str):
             body["webhook"] = webhook
@@ -73,7 +84,8 @@ def start_agent(
     integration: Optional[str] = None,
     max_credits: Optional[int] = None,
     strict_constrain_to_urls: Optional[bool] = None,
-    model: Optional[Literal["spark-1-pro", "spark-1-mini"]] = None,
+    model: Optional[Literal["spark-1-pro", "spark-1-mini", "spark-2"]] = None,
+    effort: Optional[Literal["low", "medium", "high"]] = None,
     webhook: Optional[Union[str, AgentWebhookConfig]] = None,
     threat_protection: Optional[ThreatProtectionOptions] = None,
     audit_metadata: Optional[AuditMetadata] = None,
@@ -86,6 +98,7 @@ def start_agent(
         max_credits=max_credits,
         strict_constrain_to_urls=strict_constrain_to_urls,
         model=model,
+        effort=effort,
         webhook=webhook,
         threat_protection=threat_protection,
         audit_metadata=audit_metadata,
@@ -103,6 +116,33 @@ def get_agent_status(client: HttpClient, job_id: str) -> AgentResponse:
         handle_response_error(resp, "agent-status")
     payload = _normalize_agent_response_payload(resp.json())
     return AgentResponse(**payload)
+
+
+def list_agents(
+    client: HttpClient,
+    *,
+    before: Optional[int] = None,
+) -> AgentListResponse:
+    """List agent runs, most recent first.
+
+    Pages are fixed at 20 runs. To fetch the next page, pass the `before`
+    value from the previous page's `next` URL. This method does not
+    auto-paginate.
+
+    Args:
+        client: HTTP client instance
+        before: Only return agent runs created before this unix ms timestamp
+
+    Returns:
+        AgentListResponse with the list of agent runs and optional next URL
+    """
+    endpoint = "/v2/agent"
+    if before is not None:
+        endpoint = f"{endpoint}?before={before}"
+    resp = client.get(endpoint)
+    if not resp.ok:
+        handle_response_error(resp, "list agents")
+    return AgentListResponse(**resp.json())
 
 
 def wait_agent(
@@ -133,7 +173,8 @@ def agent(
     timeout: Optional[int] = None,
     max_credits: Optional[int] = None,
     strict_constrain_to_urls: Optional[bool] = None,
-    model: Optional[Literal["spark-1-pro", "spark-1-mini"]] = None,
+    model: Optional[Literal["spark-1-pro", "spark-1-mini", "spark-2"]] = None,
+    effort: Optional[Literal["low", "medium", "high"]] = None,
     webhook: Optional[Union[str, AgentWebhookConfig]] = None,
     threat_protection: Optional[ThreatProtectionOptions] = None,
     audit_metadata: Optional[AuditMetadata] = None,
@@ -147,6 +188,7 @@ def agent(
         max_credits=max_credits,
         strict_constrain_to_urls=strict_constrain_to_urls,
         model=model,
+        effort=effort,
         webhook=webhook,
         threat_protection=threat_protection,
         audit_metadata=audit_metadata,
@@ -155,6 +197,46 @@ def agent(
     if not job_id:
         return started
     return wait_agent(client, job_id, poll_interval=poll_interval, timeout=timeout)
+
+
+def get_agent_trace(
+    client: HttpClient,
+    job_id: str,
+    *,
+    live_view: bool = False,
+) -> AgentTraceResponse:
+    """Get the execution trace of an agent job (spark-2 runs only).
+
+    Args:
+        client: HTTP client instance
+        job_id: ID of the agent job
+        live_view: Also include currently active browser sessions with live view URLs
+    """
+    endpoint = f"/v2/agent/{job_id}/trace"
+    if live_view:
+        endpoint += "?liveView=true"
+    resp = client.get(endpoint)
+    if not resp.ok:
+        handle_response_error(resp, "agent-trace")
+    return AgentTraceResponse(**resp.json())
+
+
+def get_agent_snapshot(
+    client: HttpClient,
+    job_id: str,
+    snapshot_id: str,
+) -> AgentSnapshotResponse:
+    """Get the full content of an artifact snapshot referenced by a trace event.
+
+    Args:
+        client: HTTP client instance
+        job_id: ID of the agent job
+        snapshot_id: Snapshot ID from an artifact.updated trace event
+    """
+    resp = client.get(f"/v2/agent/{job_id}/snapshots/{snapshot_id}")
+    if not resp.ok:
+        handle_response_error(resp, "agent-snapshot")
+    return AgentSnapshotResponse(**resp.json())
 
 
 def cancel_agent(client: HttpClient, job_id: str) -> bool:

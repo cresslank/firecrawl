@@ -22,6 +22,7 @@ import { ScrapeJobData } from "../../types";
 import { teamConcurrencySemaphore } from "../../services/worker/team-semaphore";
 import { getJobPriority } from "../../lib/job-priority";
 import { logRequest } from "../../services/logging/log_job";
+import { externalRequestId } from "../../lib/external-request-id";
 import { getErrorContactMessage } from "../../lib/deployment";
 import { captureExceptionWithZdrCheck } from "../../services/sentry";
 import type { BillingMetadata } from "../../services/billing/types";
@@ -395,6 +396,7 @@ export async function parseController(
           id: jobId,
           kind: "parse",
           api_version: "v2",
+          external_request_id: externalRequestId(req),
           team_id: req.auth.team_id,
           origin: req.body.origin ?? "api",
           integration: req.body.integration,
@@ -543,7 +545,9 @@ export async function parseController(
         }
 
         const timeoutErr =
-          e instanceof TransportableError && e.code === "SCRAPE_TIMEOUT";
+          e instanceof TransportableError &&
+          (e.code === "SCRAPE_TIMEOUT" ||
+            e.code === "CONCURRENCY_QUEUE_TIMEOUT");
 
         setSpanAttributes(span, {
           "parse.error": e instanceof Error ? e.message : String(e),
@@ -594,7 +598,7 @@ export async function parseController(
             });
           }
 
-          const statusCode = e.code === "SCRAPE_TIMEOUT" ? 408 : 500;
+          const statusCode = timeoutErr ? 408 : 500;
           setSpanAttributes(span, {
             "parse.status_code": statusCode,
           });

@@ -27,6 +27,7 @@ import { RequestWithAuth } from "./types";
 import { billTeam } from "../../services/billing/credit_billing";
 import { enqueueBrowserSessionActivity } from "../../lib/browser-session-activity";
 import { logRequest } from "../../services/logging/log_job";
+import { externalRequestId } from "../../lib/external-request-id";
 import { integrationSchema } from "../../utils/integration";
 import {
   BROWSER_CREDITS_PER_HOUR,
@@ -379,6 +380,7 @@ export async function browserCreateController(
         id: sessionId,
         kind: "browser",
         api_version: "v2",
+        external_request_id: externalRequestId(req),
         team_id: req.auth.team_id,
         target_hint: "Browser session",
         origin: "api",
@@ -666,6 +668,12 @@ export async function browserDeleteController(
     billTeam(req.auth.team_id, creditsBilled, req.acuc?.api_key_id ?? null, {
       endpoint: agentRequestId ? "agent" : usedPrompt ? "interact" : "browser",
       jobId: agentRequestId ?? session.id,
+      // Keyed on the session rather than on jobId, deliberately: one agent
+      // request can drive several sessions, and each is its own charge — a key
+      // built from the shared agent id would collapse them into one. The
+      // per-path suffix guards the other direction: the webhook teardown below
+      // bills the same session through a different path.
+      chargeId: `${session.id}:destroy`,
     }).catch(error => {
       logger.error("Failed to bill team for browser session", {
         error,
@@ -818,6 +826,10 @@ export async function browserWebhookDestroyedController(
     billTeam(session.team_id, creditsBilled, null, {
       endpoint: agentRequestId ? "agent" : usedPrompt ? "interact" : "browser",
       jobId: agentRequestId ?? session.id,
+      // Same reasoning as the destroy path above: keyed on the session, not on
+      // jobId, and suffixed per path so the two teardown routes cannot dedupe
+      // each other's charge away.
+      chargeId: `${session.id}:webhook`,
     }).catch(error => {
       logger.error("Failed to bill team for browser session via webhook", {
         error,

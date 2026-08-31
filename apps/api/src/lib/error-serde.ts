@@ -1,5 +1,6 @@
 import {
   ActionsNotSupportedError,
+  ConcurrencyQueueTimeoutError,
   CrawlDenialError,
   ErrorCodes,
   MapFailedError,
@@ -34,6 +35,8 @@ import {
   AudioUnsupportedUrlError,
   VideoUnsupportedUrlError,
   MediaAccessDeniedError,
+  PromptInjectionDetectedError,
+  JsonExtractionContentTooLargeError,
   XTwitterConfigurationError,
 } from "../scraper/scrapeURL/error";
 import { UnsafeDomainBlockedError } from "./threat-protection/error";
@@ -72,8 +75,11 @@ const errorMap: Record<ErrorCodes, any> = {
   SCRAPE_AUDIO_UNSUPPORTED_URL: AudioUnsupportedUrlError,
   SCRAPE_VIDEO_UNSUPPORTED_URL: VideoUnsupportedUrlError,
   SCRAPE_MEDIA_ACCESS_DENIED: MediaAccessDeniedError,
+  SCRAPE_PROMPT_INJECTION_DETECTED: PromptInjectionDetectedError,
+  SCRAPE_JSON_CONTENT_TOO_LARGE: JsonExtractionContentTooLargeError,
   SCRAPE_X_TWITTER_CONFIGURATION_ERROR: XTwitterConfigurationError,
   MAP_FAILED: MapFailedError,
+  CONCURRENCY_QUEUE_TIMEOUT: ConcurrencyQueueTimeoutError,
   unsafe_domain_blocked: UnsafeDomainBlockedError,
 
   // Zod errors

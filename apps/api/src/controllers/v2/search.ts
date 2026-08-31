@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { externalRequestId } from "../../lib/external-request-id";
 import { config } from "../../config";
 import {
   RequestWithAuth,
@@ -181,11 +182,17 @@ export async function searchController(
       }
     }
 
+    // Kick off the `requests` row insert without blocking: it queues on the
+    // Postgres pool and can take seconds under pool pressure. We only need it
+    // committed before the child-row writes (logSearch et al. below) to keep
+    // the request_id FK ordering — same pattern as the scrape controllers.
+    let logRequestPromise: Promise<void> | undefined;
     if (!agentRequestId) {
-      await logRequest({
+      logRequestPromise = logRequest({
         id: jobId,
         kind: "search",
         api_version: "v2",
+        external_request_id: externalRequestId(req),
         team_id: req.auth.team_id,
         origin: req.body.origin ?? "api",
         integration: req.body.integration,
@@ -266,7 +273,7 @@ export async function searchController(
         req.auth.team_id,
         result.searchCredits,
         req.acuc?.api_key_id ?? null,
-        billing,
+        { ...billing, chargeId: jobId },
       ).catch(error =>
         logger.error("Failed to bill team for search credits", {
           teamId: req.auth.team_id,
@@ -289,6 +296,18 @@ export async function searchController(
 
     const endTime = new Date().getTime();
     const timeTakenInSeconds = (endTime - middlewareStartTime) / 1000;
+
+    // Ensure the parent `requests` row is committed before the child
+    // `searches` insert, to avoid a request_id FK violation. The insert has
+    // been in flight since the top of the controller, so this is ~free in
+    // practice; robustInsert never rejects, so this await cannot throw.
+    const logStart = Date.now();
+    await logRequestPromise;
+    const waited = Date.now() - logStart;
+    if (waited >= 5)
+      logger.warn("Had to wait for log request promise to complete", {
+        timeMs: waited,
+      });
 
     logSearch(
       {
@@ -325,7 +344,7 @@ export async function searchController(
           via: "search_category",
         },
         response: null,
-        num_results: result.response.developer?.length ?? 0,
+        num_results: result.developerResultsCount,
         time_taken: timeTakenInSeconds,
         // Ensure preview-mode searches don't get a non-zero credits_cost
         // in the research ledger when preview tokens are used.

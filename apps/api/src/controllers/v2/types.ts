@@ -18,6 +18,7 @@ import {
   ScrapeOptions as V1ScrapeOptions,
 } from "../v1/types";
 import type { InternalOptions } from "../../scraper/scrapeURL";
+import type { PdfPageBlocks } from "../../scraper/scrapeURL/engines/pdf/types";
 import { ErrorCodes } from "../../lib/error";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -357,6 +358,7 @@ const jsonFormatWithOptions = z.strictObject({
       message: OPENAI_SCHEMA_ERROR_MESSAGE,
     }),
   prompt: z.string().max(10000).optional(),
+  checkPromptInjection: z.boolean().optional(),
 });
 
 export type JsonFormatWithOptions = z.output<typeof jsonFormatWithOptions>;
@@ -457,6 +459,7 @@ export type FormatObject =
   | { type: "markdown" }
   | { type: "html" }
   | { type: "rawHtml" }
+  | { type: "rawBase64" }
   | { type: "links" }
   | { type: "images" }
   | { type: "summary" }
@@ -478,18 +481,46 @@ const pdfModeSchema = z.enum(["fast", "auto", "ocr"]);
 
 export type PDFMode = z.infer<typeof pdfModeSchema>;
 
-const pdfParserWithOptions = z.strictObject({
-  type: z.literal("pdf"),
-  mode: pdfModeSchema.optional(),
-  maxPages: z.int().positive().finite().max(10000).optional(),
-  /** Include physical per-page markdown alongside document markdown. */
-  pageMarkdown: z.boolean().optional(),
-  // Experimental: route this request through the fire-pdf async pipeline
-  // (POST /jobs + poll) instead of the sync POST /ocr endpoint. Falls back
-  // to sync on any async-path failure, so user-visible behavior is unchanged
-  // beyond latency variance. Underscored to mark as internal/experimental.
-  __firePdfAsync: z.boolean().optional(),
-});
+const pdfParserWithOptions = z
+  .strictObject({
+    type: z.literal("pdf"),
+    mode: pdfModeSchema.optional(),
+    maxPages: z.int().positive().finite().max(10000).optional(),
+    /** Include physical per-page markdown alongside document markdown —
+     * populates `document.pages`. */
+    pages: z.boolean().optional(),
+    /**
+     * @deprecated Renamed to `pages` (2026-08). Accepted as a silent alias
+     * for callers that adopted the option pre-rename; never documented.
+     * Normalized into `pages` below — internal code never sees this field.
+     */
+    pageMarkdown: z.boolean().optional(),
+    /** Include per-page typed layout blocks (bounding boxes, block types,
+     * reading order) alongside document markdown — populates
+     * `document.blocks`. */
+    blocks: z.boolean().optional(),
+    /** Join PDF pages in `document.markdown` with
+     * `\n\n---\n\n<!-- page N -->\n\n` where N is the 1-based physical page
+     * of the content that follows. Markers appear between pages only (no
+     * leading marker for page 1), and numbering may skip pages merged by
+     * cross-page stitching — callers that need every physical page should
+     * use `pages: true` instead. No new response field. */
+    pageMarkers: z.boolean().optional(),
+    // Experimental: route this request through the fire-pdf async pipeline
+    // (POST /jobs + poll) instead of the sync POST /ocr endpoint. Falls back
+    // to sync on any async-path failure, so user-visible behavior is unchanged
+    // beyond latency variance. Underscored to mark as internal/experimental.
+    __firePdfAsync: z.boolean().optional(),
+  })
+  .transform(({ pageMarkdown, pages, ...parser }) => {
+    // Fold the deprecated alias into the canonical name at the schema
+    // boundary; `pages` wins when both are set. Keep the key optional so
+    // plain `{ type: "pdf" }` parser literals stay assignable.
+    const normalized: typeof parser & { pages?: boolean } = { ...parser };
+    const effective = pages ?? pageMarkdown;
+    if (effective !== undefined) normalized.pages = effective;
+    return normalized;
+  });
 
 const parsersSchema = z
   .array(z.union([z.literal("pdf"), pdfParserWithOptions]))
@@ -537,7 +568,35 @@ export function getPDFPageMarkdown(parsers?: Parsers): boolean {
   if (!parsers) return false;
   for (const parser of parsers) {
     if (typeof parser === "object" && parser.type === "pdf") {
-      return parser.pageMarkdown === true;
+      // The deprecated `pageMarkdown` alias is folded into `pages` at the
+      // schema boundary, so freshly parsed parsers only carry the canonical
+      // name. Serialized options bypass re-parsing (queued jobs and crawl
+      // option snapshots from before the rename), so read the legacy key
+      // defensively too; `pages` wins when both are present.
+      return (
+        (parser.pages ??
+          (parser as { pageMarkdown?: boolean }).pageMarkdown) === true
+      );
+    }
+  }
+  return false;
+}
+
+export function getPDFBlocks(parsers?: Parsers): boolean {
+  if (!parsers) return false;
+  for (const parser of parsers) {
+    if (typeof parser === "object" && parser.type === "pdf") {
+      return parser.blocks === true;
+    }
+  }
+  return false;
+}
+
+export function getPDFPageMarkers(parsers?: Parsers): boolean {
+  if (!parsers) return false;
+  for (const parser of parsers) {
+    if (typeof parser === "object" && parser.type === "pdf") {
+      return parser.pageMarkers === true;
     }
   }
   return false;
@@ -645,6 +704,7 @@ const baseScrapeOptions = z.strictObject({
           z.strictObject({ type: z.literal("markdown") }),
           z.strictObject({ type: z.literal("html") }),
           z.strictObject({ type: z.literal("rawHtml") }),
+          z.strictObject({ type: z.literal("rawBase64") }),
           z.strictObject({ type: z.literal("links") }),
           z.strictObject({ type: z.literal("images") }),
           z.strictObject({ type: z.literal("summary") }),
@@ -680,7 +740,11 @@ const baseScrapeOptions = z.strictObject({
       const hasJson = x.some(f => f.type === "json");
       const hasDeterministicJson = x.some(f => f.type === "deterministicJson");
       return !(hasJson && hasDeterministicJson);
-    }, "Cannot specify both json and deterministicJson formats"),
+    }, "Cannot specify both json and deterministicJson formats")
+    .refine(
+      x => !x.some(f => f.type === "rawBase64") || x.length === 1,
+      "The rawBase64 format cannot be combined with other formats",
+    ),
   headers: z.record(z.string(), z.string()).optional(),
   includeTags: z
     .string()
@@ -935,42 +999,52 @@ const agentWebhookSchema = createWebhookSchema([
   "cancelled",
 ]);
 
-export const agentRequestSchema = z.strictObject({
-  urls: URL.array().optional(),
-  prompt: z.string().max(10000),
-  schema: z
-    .any()
-    .optional()
-    .superRefine((val, ctx) => {
-      if (!val) return; // Allow undefined schema
-      try {
-        agentAjv.compile(val);
-      } catch (e) {
-        const message =
-          e instanceof Error
-            ? e.message
-            : typeof e === "string"
-              ? e
-              : "Unknown error";
-        ctx.addIssue({
-          code: "custom",
-          message: `Invalid JSON schema: ${message}`,
-        });
-      }
-    }),
-  origin: z.string().optional().prefault("api"),
-  integration: integrationSchema.optional().transform(val => val || null),
-  maxCredits: z.number().optional(),
-  strictConstrainToURLs: z.boolean().optional(),
-  webhook: agentWebhookSchema.optional(),
+export const agentRequestSchema = z
+  .strictObject({
+    urls: URL.array().optional(),
+    prompt: z.string().max(10000),
+    schema: z
+      .any()
+      .optional()
+      .superRefine((val, ctx) => {
+        if (!val) return; // Allow undefined schema
+        try {
+          agentAjv.compile(val);
+        } catch (e) {
+          const message =
+            e instanceof Error
+              ? e.message
+              : typeof e === "string"
+                ? e
+                : "Unknown error";
+          ctx.addIssue({
+            code: "custom",
+            message: `Invalid JSON schema: ${message}`,
+          });
+        }
+      }),
+    origin: z.string().optional().prefault("api"),
+    integration: integrationSchema.optional().transform(val => val || null),
+    maxCredits: z.number().optional(),
+    strictConstrainToURLs: z.boolean().optional(),
+    webhook: agentWebhookSchema.optional(),
 
-  overrideWhitelist: z.string().optional(),
-  model: z
-    .enum(["spark-1-pro", "spark-1-mini", "spark-2"])
-    .default("spark-1-pro"),
-  threatProtection: threatProtectionOverrideSchema.optional(),
-  auditMetadata: auditMetadataSchema.optional(),
-});
+    overrideWhitelist: z.string().optional(),
+    // The spark-1 preset names stay accepted so existing callers keep working,
+    // but spark-1 is retired: the transform below runs every request on
+    // spark-2 regardless of what was sent.
+    model: z.enum(["spark-1-pro", "spark-1-mini", "spark-2"]).optional(),
+    effort: z.enum(["low", "medium", "high"]).optional(),
+    threatProtection: threatProtectionOverrideSchema.optional(),
+    auditMetadata: auditMetadataSchema.optional(),
+  })
+  // spark-1 is retired and spark-2 is the default. The spark-1 preset names
+  // remain valid input and silently resolve to spark-2, so every request —
+  // with or without effort, with or without a model — runs spark-2.
+  .transform(x => ({
+    ...x,
+    model: "spark-2" as const,
+  }));
 
 export type AgentRequest = z.infer<typeof agentRequestSchema>;
 // export type AgentRequestInput = z.input<typeof agentRequestSchema>;
@@ -1048,6 +1122,10 @@ const parseRequestSchemaBase = baseScrapeOptions.extend({
 });
 
 export const parseRequestSchema = strictWithMessage(parseRequestSchemaBase)
+  .refine(
+    x => !x.formats.some(format => format.type === "rawBase64"),
+    "The rawBase64 format is not supported for parse uploads",
+  )
   .refine(waitForRefine, waitForRefineOpts)
   .transform(x => {
     const { file, ...scrapeLike } = x;
@@ -1240,10 +1318,14 @@ export type Document = {
   description?: string;
   url?: string;
   markdown?: string;
-  /** Physical PDF pages, present only for `parsers[].pageMarkdown`. */
+  /** Physical PDF pages, present only for the `parsers[].pages` option. */
   pages?: Array<{ pageNumber: number; markdown: string }>;
+  /** Typed PDF layout blocks with bounding boxes, present only for
+   * `parsers[].blocks`. */
+  blocks?: PdfPageBlocks[];
   html?: string;
   rawHtml?: string;
+  rawBase64?: string;
   links?: string[];
   images?: string[];
   screenshot?: string;
@@ -1426,6 +1508,36 @@ export interface ExtractResponse {
   creditsUsed?: number;
 }
 
+export type AgentListResponse =
+  | ErrorResponse
+  | {
+      success: true;
+      agents: {
+        id: string;
+        createdAt: string;
+        targetHint: string;
+        origin: string;
+        integration?: string;
+        settings: {
+          hidden: boolean;
+          starred: boolean;
+          label?: string;
+        };
+        status: "processing" | "completed" | "failed";
+        options?: {
+          urls?: string[];
+          prompt: string;
+          schema?: any;
+          // Widened past the known presets on purpose: this is the stored
+          // value from historical runs, and new models ship without an API
+          // type release.
+          model: "spark-1-pro" | "spark-1-mini" | "spark-2" | (string & {});
+          effort?: "low" | "medium" | "high";
+        };
+      }[];
+      next?: string;
+    };
+
 export type AgentResponse =
   | ErrorResponse
   | {
@@ -1441,6 +1553,7 @@ export type AgentStatusResponse =
       error?: string;
       data?: any;
       model?: "spark-1-pro" | "spark-1-mini" | "spark-2";
+      effort?: "low" | "medium" | "high";
       expiresAt: string;
       creditsUsed?: number;
     };
@@ -1847,6 +1960,7 @@ export function fromV1ScrapeOptions(
               type: "json",
               schema: opts?.schema,
               prompt: opts?.prompt,
+              checkPromptInjection: opts?.checkPromptInjection ?? false,
             };
             return fmt;
           } else if (x === "json") {
@@ -1857,6 +1971,7 @@ export function fromV1ScrapeOptions(
                 type: "json",
                 schema: opts.schema,
                 prompt: opts.prompt,
+                checkPromptInjection: opts.checkPromptInjection ?? false,
               };
               return includesFormat(v1ScrapeOptions.formats as any, "extract")
                 ? null
@@ -2122,6 +2237,15 @@ export const searchRequestSchema = z
     x => !(x.includeDomains?.length && x.excludeDomains?.length),
     "includeDomains and excludeDomains cannot both be specified",
   )
+  .refine(x => {
+    const categories = x.categories ?? [];
+    const hasDeveloper = categories.some(category =>
+      typeof category === "string"
+        ? category === "developer"
+        : category.type === "developer",
+    );
+    return !hasDeveloper || categories.length === 1;
+  }, "the developer category cannot be combined with other categories")
   .refine(x => waitForRefine(x.scrapeOptions), waitForRefineOpts)
   .transform(x => {
     const country =
