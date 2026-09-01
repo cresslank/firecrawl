@@ -88,9 +88,9 @@ export const pdfExtractionSemaphore = new PdfExtractionSemaphore(
   config.PDF_EXTRACTION_CONCURRENCY,
 );
 
-/** Run `fn` holding a PDF extraction permit. */
+/** Run sync or async `fn` while holding a PDF extraction permit. */
 export async function withPdfExtractionPermit<T>(
-  fn: () => Promise<T>,
+  fn: () => T | Promise<T>,
 ): Promise<T> {
   const release = await pdfExtractionSemaphore.acquire();
   try {
