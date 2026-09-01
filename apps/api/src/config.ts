@@ -157,6 +157,7 @@ const configSchema = z.object({
   ),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().optional(),
+  OPENAI_USE_CHAT_COMPLETIONS: z.stringbool().default(false),
   OPENROUTER_API_KEY: z.string().optional(),
   XAI_API_KEY: z.string().optional(),
   LLAMAPARSE_API_KEY: z.string().optional(),
