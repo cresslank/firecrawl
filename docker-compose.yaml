@@ -133,10 +133,16 @@ services:
     memswap_limit: 8G
 
   redis:
+    # Build a minimal derivative so fixable Alpine package findings are closed
+    # without waiting for the official Redis image to be republished.
+    image: firecrawl-redis
+    build:
+      context: apps/redis
+      args:
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
-    # uncomment the Valkey statement and comment out the Redis statement.
+    # replace the local Redis build with a reviewed, immutable Valkey image pin.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    image: redis:8.6.5-alpine@sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9
     # image: valkey/valkey:<tag>-alpine@sha256:<digest>
 
     networks:
