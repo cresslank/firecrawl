@@ -1,3 +1,4 @@
+import { bountyBlocklistMiddleware } from "./exchange-blocklist";
 import express, { Request, Response } from "express";
 import { Agent, fetch } from "undici";
 import { config } from "../config";
@@ -12,6 +13,7 @@ const ANALYTICS_TIMEOUT_MS = 20_000;
 const APPLICATIONS_TIMEOUT_MS = 15_000;
 const CLAIMS_TIMEOUT_MS = 20_000;
 const SUPPLY_TIMEOUT_MS = 30_000;
+const INGEST_TIMEOUT_MS = 50_000;
 
 const FORWARDED_REQUEST_HEADERS = ["accept", "x-request-id"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "x-request-id"];
@@ -168,6 +170,44 @@ exchangeRouter.get(
 );
 
 exchangeRouter.post(
+  "/publisher/bounties",
+  authMiddleware(RateLimiterMode.Labs),
+  bountyBlocklistMiddleware,
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.put(
+  "/publisher/bounties/:id",
+  authMiddleware(RateLimiterMode.Labs),
+  bountyBlocklistMiddleware,
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.delete(
+  "/publisher/bounties/:id",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.post(
+  "/publisher/bounties/:id/claim",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.post(
+  "/publisher/bounties/:id/submit",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.post(
+  "/publisher/bounties/:id/skill",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(ANALYTICS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.post(
   "/applications",
   authMiddleware(RateLimiterMode.Labs),
   wrap(exchangeProxy(APPLICATIONS_TIMEOUT_MS, { requiresRetrieveFlag: false })),
@@ -237,4 +277,28 @@ exchangeRouter.post(
   "/records/fetch",
   authMiddleware(RateLimiterMode.Labs),
   wrap(exchangeProxy(RETRIEVE_TIMEOUT_MS)),
+);
+
+exchangeRouter.get(
+  "/ingest{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(INGEST_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.post(
+  "/ingest{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(INGEST_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.patch(
+  "/ingest{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(INGEST_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+exchangeRouter.delete(
+  "/ingest{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(INGEST_TIMEOUT_MS, { requiresRetrieveFlag: false })),
 );

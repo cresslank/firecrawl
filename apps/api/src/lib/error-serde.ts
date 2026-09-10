@@ -10,6 +10,7 @@ import {
   SitemapError,
   TransportableError,
   UnknownError,
+  UnsupportedSiteError,
 } from "./error";
 import {
   ActionError,
@@ -76,6 +77,7 @@ const errorMap: Record<ErrorCodes, any> = {
   SCRAPE_RACED_REDIRECT_ERROR: RacedRedirectError,
   SCRAPE_SITEMAP_ERROR: SitemapError,
   CRAWL_DENIAL: CrawlDenialError,
+  UNSUPPORTED_SITE: UnsupportedSiteError,
   SCRAPE_AUDIO_UNSUPPORTED_URL: AudioUnsupportedUrlError,
   SCRAPE_VIDEO_UNSUPPORTED_URL: VideoUnsupportedUrlError,
   SCRAPE_MEDIA_ACCESS_DENIED: MediaAccessDeniedError,
@@ -90,6 +92,13 @@ const errorMap: Record<ErrorCodes, any> = {
   BAD_REQUEST: null,
   BAD_REQUEST_INVALID_JSON: null,
   PARSE_UNSUPPORTED_OPTIONS: null,
+
+  // Agent thread rejections are API-level, never transported through workers.
+  thread_not_found: null,
+  thread_busy: null,
+  thread_expired: null,
+  threads_disabled: null,
+  exchange_not_enabled: null,
 };
 
 export function serializeTransportableError(error: TransportableError) {
