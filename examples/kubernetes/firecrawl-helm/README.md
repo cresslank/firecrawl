@@ -137,15 +137,19 @@ docker buildx create --name multiarch --use --bootstrap
 ```
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 --push \
+set -euo pipefail
+sha=$(git rev-parse --verify 'HEAD^{commit}')
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+
+docker buildx build --platform linux/amd64,linux/arm64 --push --build-arg "GIT_SHA=$sha" \
   -t YOUR_REGISTRY/firecrawl:YOUR_TAG \
   ../../../apps/api
 
-docker buildx build --platform linux/amd64,linux/arm64 --push \
+docker buildx build --platform linux/amd64,linux/arm64 --push --build-arg "GIT_SHA=$sha" \
   -t YOUR_REGISTRY/firecrawl-playwright:YOUR_TAG \
   ../../../apps/playwright-service-ts
 
-docker buildx build --platform linux/amd64,linux/arm64 --push \
+docker buildx build --platform linux/amd64,linux/arm64 --push --build-arg "GIT_SHA=$sha" \
   -t YOUR_REGISTRY/nuq-postgres:YOUR_TAG \
   ../../../apps/nuq-postgres
 ```

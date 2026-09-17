@@ -47,10 +47,21 @@ jobs:
           platform=${{ matrix.platform }}
           echo "PLATFORM_SUFFIX=${platform//\//-}" >> $GITHUB_ENV
 
+      - name: Resolve checked-out build revision
+        id: build_revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --verify 'HEAD^{commit}')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
       - name: 'Build and Push Image'
         uses: useblacksmith/build-push-action@30c71162f16ea2c27c3e21523255d209b8b538c1 # v2
         with:
           context: ./apps/playwright-service-ts
+          build-args: |
+            GIT_SHA=${{ steps.build_revision.outputs.sha }}
           push: true
           tags: ghcr.io/${{ env.REPO_OWNER }}/playwright-service:${{ env.PLATFORM_SUFFIX }}
           platforms: ${{ matrix.platform }}

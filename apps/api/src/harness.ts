@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import * as net from "net";
 import { basename, join } from "path";
 import { HTML_TO_MARKDOWN_PATH } from "./natives";
+import { prepareNuqPostgresImage } from "./lib/harness-build";
 
 const childProcesses = new Set<ChildProcess>();
 const stopping = new WeakSet<ChildProcess>(); // processes we're intentionally stopping
@@ -33,7 +34,6 @@ const MONOREPO_ROOT = existsSync(
 )
   ? SOURCE_MONOREPO_ROOT
   : DIST_MONOREPO_ROOT;
-const NUQ_POSTGRES_PATH = join(MONOREPO_ROOT, "apps", "nuq-postgres");
 
 interface ProcessResult {
   promise: Promise<void>;
@@ -456,11 +456,11 @@ async function stopAndRemoveContainer(
 
 async function buildNuqPostgresImage(runtime: string): Promise<void> {
   logger.info("Building nuq-postgres Docker image");
-  const build = execForward(
-    `${runtime}@build`,
-    `${runtime} build -t firecrawl-nuq-postgres:latest ${NUQ_POSTGRES_PATH}`,
+  await prepareNuqPostgresImage(
+    MONOREPO_ROOT,
+    runtime,
+    args => execForward(`${runtime}@build`, args).promise,
   );
-  await build.promise;
   logger.success("nuq-postgres image built");
 }
 
@@ -551,11 +551,12 @@ async function setupNuqPostgres(): Promise<Services["nuqPostgres"]> {
 
   const containerName = "firecrawl-nuq-postgres";
 
+  // Resolve/validate the checkout and finish the build before disrupting a
+  // working local database. Missing Git metadata or a failed build is harmless.
+  await buildNuqPostgresImage(runtime);
+
   // Stop and remove any existing container
   await stopAndRemoveContainer(runtime, containerName);
-
-  // Build the image
-  await buildNuqPostgresImage(runtime);
 
   // Start the container
   await startNuqPostgresContainer(runtime, containerName);

@@ -30,5 +30,8 @@ jobs:
 
           - name: 'Build Inventory Image'
             run: |
-              docker build . --tag ghcr.io/firecrawl/firecrawl-redis:latest
+              set -euo pipefail
+              sha=$(git rev-parse --verify 'HEAD^{commit}')
+              [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+              docker build . --build-arg "GIT_SHA=$sha" --tag ghcr.io/firecrawl/firecrawl-redis:latest
               docker push ghcr.io/firecrawl/firecrawl-redis:latest

@@ -260,7 +260,10 @@ jobs:
       - name: Run Docker Postgres
         if: matrix.nuq == 'postgres'
         run: |
-          docker build -t firecrawl/nuq-postgres:latest ./apps/nuq-postgres
+          set -euo pipefail
+          sha=$(git rev-parse --verify 'HEAD^{commit}')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          docker build --build-arg "GIT_SHA=$sha" -t firecrawl/nuq-postgres:latest ./apps/nuq-postgres
           docker run -d -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres --name postgres firecrawl/nuq-postgres:latest
 
       - name: Start FoundationDB
