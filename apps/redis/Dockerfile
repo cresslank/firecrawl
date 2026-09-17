@@ -8,7 +8,8 @@ LABEL org.opencontainers.image.revision=$GIT_SHA
 USER root
 RUN apk add --no-cache --upgrade \
       'libcrypto3=3.5.8-r0' \
-      'libssl3=3.5.8-r0'
+      'libssl3=3.5.8-r0' \
+      'setpriv=2.41.6-r1'
 
 COPY start-redis-server.sh /usr/bin/start-redis-server.sh
 

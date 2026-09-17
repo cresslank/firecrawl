@@ -58,7 +58,16 @@ function parseFeedbackJob(value: Buffer | string): FeedbackJob {
   ) {
     throw new Error("Invalid Bigtable feedback job row");
   }
-  return parsed as FeedbackJob;
+  // Return only the public contract, not storage metadata such as version.
+  return {
+    requestId: row.requestId,
+    teamId: row.teamId,
+    refundClass: row.refundClass as RefundClass,
+    feedbackDeadlineMs: row.feedbackDeadlineMs,
+    succeeded: row.succeeded,
+    creditsBilled: row.creditsBilled,
+    zeroDataRetention: row.zeroDataRetention,
+  };
 }
 
 export async function readFeedbackJob(
