@@ -1,4 +1,10 @@
 import { bountyBlocklistMiddleware } from "./exchange-blocklist";
+import { providerScrapeController } from "../controllers/v2/scrape-alexandria";
+import { orgIdFromAcuc } from "../lib/team-org";
+import {
+  acceptProviderTerms,
+  acceptTermsSchema,
+} from "../services/alexandria/terms";
 import express, { Request, Response } from "express";
 import { Agent, fetch } from "undici";
 import { config } from "../config";
@@ -113,10 +119,73 @@ function exchangeProxy(
   };
 }
 
+async function providerTermsAcceptController(req: Request, res: Response) {
+  const authedReq = req as RequestWithAuth<any, any, any>;
+  const orgId = orgIdFromAcuc(authedReq.acuc);
+  if (orgId === null) {
+    return exchangeError(
+      res,
+      403,
+      "This endpoint is not enabled for this team.",
+    );
+  }
+  const body = acceptTermsSchema.safeParse(req.body);
+  if (!body.success) {
+    return exchangeError(
+      res,
+      400,
+      "Send { provider, version, digest, confirmed: true } for one provider.",
+    );
+  }
+  const response = await acceptProviderTerms({
+    teamId: authedReq.auth.team_id,
+    orgId,
+    apiKeyId:
+      authedReq.acuc?.api_key_id_text ??
+      (authedReq.acuc?.api_key_id == null
+        ? null
+        : String(authedReq.acuc.api_key_id)),
+    body: body.data,
+  });
+  return res.status(response.status).json(response.body);
+}
+
 export const exchangeRouter = express.Router();
 
 exchangeRouter.get(
   "/discover{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(DISCOVER_TIMEOUT_MS, { requiresRetrieveFlag: false })),
+);
+
+// Both skills routes intentionally require the exchangeRetrieve flag during preview.
+exchangeRouter.post(
+  "/skills/resolve",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(DISCOVER_TIMEOUT_MS)),
+);
+
+exchangeRouter.get(
+  "/skills/:id/SKILL.md",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(DISCOVER_TIMEOUT_MS)),
+);
+
+// Provider agreements the web app offers for acceptance; a catalogue read, never an acceptance.
+exchangeRouter.get(
+  "/provider-terms{/*path}",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(exchangeProxy(DISCOVER_TIMEOUT_MS)),
+);
+
+exchangeRouter.post(
+  "/provider-terms/accept",
+  authMiddleware(RateLimiterMode.Labs),
+  wrap(providerTermsAcceptController),
+);
+
+exchangeRouter.post(
+  "/provider-terms/events",
   authMiddleware(RateLimiterMode.Labs),
   wrap(exchangeProxy(DISCOVER_TIMEOUT_MS)),
 );
@@ -124,7 +193,9 @@ exchangeRouter.get(
 exchangeRouter.post(
   "/retrieve",
   authMiddleware(RateLimiterMode.Labs),
-  wrap(exchangeProxy(RETRIEVE_TIMEOUT_MS)),
+  wrap((req, res) =>
+    providerScrapeController(req as RequestWithAuth<any, any, any>, res, true),
+  ),
 );
 
 exchangeRouter.get(

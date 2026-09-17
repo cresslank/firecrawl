@@ -43,6 +43,10 @@ import {
   isThreatProtectionForced,
   THREAT_PROTECTION_V0_UNSUPPORTED_MESSAGE,
 } from "../../lib/threat-protection/request";
+import {
+  getSafeMode,
+  SAFE_MODE_V0_UNSUPPORTED_MESSAGE,
+} from "../../lib/safe-mode";
 import { applyAgentAuthDiscoveryHeader } from "../../lib/agent-auth-discovery";
 
 export async function crawlController(req: Request, res: Response) {
@@ -68,6 +72,12 @@ export async function crawlController(req: Request, res: Response) {
       });
     }
 
+    if (getSafeMode(chunk?.flags)) {
+      return res.status(403).json({
+        error: SAFE_MODE_V0_UNSUPPORTED_MESSAGE,
+      });
+    }
+
     const id = uuidv7();
 
     await logRequest({
@@ -81,6 +91,9 @@ export async function crawlController(req: Request, res: Response) {
       target_hint: req.body.url ?? "",
       zeroDataRetention: false, // not supported on v0
       api_key_id: chunk?.api_key_id ?? null,
+      jobAccessExpiresAt: new Date(
+        Date.now() + (chunk?.flags?.crawlTtlHours ?? 24) * 60 * 60 * 1000,
+      ),
     });
 
     redisEvictConnection.sadd("teams_using_v0", team_id).catch(error =>
@@ -140,11 +153,20 @@ export async function crawlController(req: Request, res: Response) {
 
     const limitCheck = req.body?.crawlerOptions?.limit ?? 1;
     // Autumn is the source of truth for credits.
-    const autumnResult = await autumnService.checkCredits({
-      teamId: team_id,
-      value: limitCheck,
-      properties: { source: "v0/crawl", apiKeyId: chunk?.api_key_id ?? null },
-    });
+    // No org, no Autumn customer to gate against: fail open, exactly as
+    // checkCredits answered for an identity it could not name.
+    const orgId = chunk?.org_id ?? null;
+    const autumnResult = orgId
+      ? await autumnService.checkCredits({
+          teamId: team_id,
+          orgId,
+          value: limitCheck,
+          properties: {
+            source: "v0/crawl",
+            apiKeyId: chunk?.api_key_id ?? null,
+          },
+        })
+      : null;
 
     if (autumnResult !== null && !autumnResult.allowed) {
       return res.status(402).json({
@@ -273,6 +295,7 @@ export async function crawlController(req: Request, res: Response) {
 
           let jobPriority = await getJobPriority({
             team_id,
+            org_id: orgId,
             basePriority: 21,
           });
           const billing = { endpoint: "crawl" as const, jobId: id };
@@ -338,7 +361,7 @@ export async function crawlController(req: Request, res: Response) {
           apiKeyId: chunk?.api_key_id ?? null,
         },
         jobId,
-        await getJobPriority({ team_id, basePriority: 15 }),
+        await getJobPriority({ team_id, org_id: orgId, basePriority: 15 }),
       );
       await addCrawlJob(id, jobId, logger);
     }

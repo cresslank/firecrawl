@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22.23.1-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba AS base
+FROM node:22.23.2-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS base
 
 # This network/CDN blackholes HTTP requests with Debian's default
 # `Debian APT-HTTP/1.3` User-Agent. Pin a generic UA so image rebuilds can
@@ -16,7 +16,8 @@ RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
 FROM rust:1.97.1-slim@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS rust-toolchain
 
 # Build Go shared library
-FROM golang:1.25.12@sha256:9006890ecba0a168034d99516084099ae3114d9f2b7d6572c77f2dde57ebc980 AS go-build
+FROM golang:1.26.8-trixie@sha256:771f3162219f7a66bb6be3fea1ba31f418932946a99ad9eac26ffd555dfcf393 AS go-build
+ENV GOMAXPROCS=2 GOFLAGS=-p=2
 WORKDIR /app
 COPY sharedLibs/go-html-to-md ./sharedLibs/go-html-to-md
 
@@ -58,6 +59,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Copy a pinned Rust toolchain instead of running curl | sh during the build.
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
+    CARGO_BUILD_JOBS=2 \
     CARGO_NET_GIT_FETCH_WITH_CLI=true \
     PATH=/usr/local/cargo/bin:$PATH
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -74,13 +76,14 @@ COPY native ./native
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/native/target \
-    pnpm install --frozen-lockfile
+    npm_config_jobs=2 pnpm install --frozen-lockfile --child-concurrency=2
 
 COPY . .
 
 # Build the application from a clean output directory.
 RUN rm -rf dist && pnpm run build
-ARG GIT_SHA=unknown
+ARG GIT_SHA
+RUN printf '%s\n' "$GIT_SHA" | grep -Eq '^[0-9a-f]{40}$'
 RUN test -s dist/src/harness.js && \
     test -s dist/src/controllers/v0/crawl-status.js && \
     printf '%s\n' "$GIT_SHA" > BUILD_SHA
@@ -129,7 +132,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 EXPOSE 8080
 WORKDIR /app
-ARG GIT_SHA=unknown
+ARG GIT_SHA
+RUN printf '%s\n' "$GIT_SHA" | grep -Eq '^[0-9a-f]{40}$'
+LABEL org.opencontainers.image.revision=$GIT_SHA
 ENV FIRECRAWL_BUILD_SHA=$GIT_SHA
 
 # Copy built application

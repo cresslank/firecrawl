@@ -172,16 +172,6 @@ const configSchema = z.object({
   LLAMAPARSE_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   AUTUMN_SECRET_KEY: z.string().optional(),
-  // How long a team → org mapping is trusted in-process before it is re-read
-  // from the DB. Bounded because a team's org changes when accounts are merged
-  // or moved: every warm pod otherwise keeps billing the old Autumn customer
-  // (and 404s on the entity that no longer lives there) until it restarts.
-  AUTUMN_ORG_CACHE_TTL_SECONDS: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(3600)
-    .default(300),
   RESEND_API_KEY: z.string().optional(),
   PREVIEW_TOKEN: z.string().optional(),
   SEARCH_PREVIEW_TOKEN: z.string().optional(),
@@ -277,7 +267,7 @@ const configSchema = z.object({
     .positive()
     .default(64 * 1024 * 1024),
 
-  // Cloud Bigtable (change tracking bookkeeping store). The client
+  // Cloud Bigtable operational stores. The client
   // auto-detects BIGTABLE_EMULATOR_HOST, so local dev only needs the
   // emulator plus these vars. BIGTABLE_CREDENTIALS mirrors
   // GCS_CREDENTIALS: base64-encoded service-account JSON; unset falls
@@ -286,6 +276,10 @@ const configSchema = z.object({
   BIGTABLE_INSTANCE_ID: z.string().optional(),
   BIGTABLE_APP_PROFILE_ID: z.string().optional(),
   BIGTABLE_CHANGE_TRACKING_TABLE: z.string().optional(),
+  BIGTABLE_JOB_ACCESS_TABLE: z.string().optional(),
+  BIGTABLE_FEEDBACK_JOBS_TABLE: z.string().optional(),
+  BIGTABLE_SCRAPE_STATE_TABLE: z.string().optional(),
+  BIGTABLE_EXTRACT_STATE_TABLE: z.string().optional(),
   BIGTABLE_CREDENTIALS: z.string().optional(),
 
   // ClickHouse (Search Analytics)
@@ -302,6 +296,7 @@ const configSchema = z.object({
 
   // Exchange (routed data sources service)
   FIRE_EXCHANGE_URL: z.url().optional(),
+  EXCHANGE_INTERNAL_SECRET: emptyStringAsUndefined(z.string().trim().min(1)),
 
   // Fire Engine
   FIRE_ENGINE_BETA_URL: z.string().optional(),
@@ -572,7 +567,7 @@ const configSchema = z.object({
   DISABLE_ENGPICKER: z.stringbool().optional(),
   DISABLE_MONITORING: z.stringbool().default(false),
 
-  EXTRACT_V3_BETA_URL: z.string().optional(),
+  EXTRACT_V3_BETA_URL: z.string().url().optional(),
   AGENT_INTEROP_SECRET: z
     .string()
     .refine(value => value.trim().length > 0, {

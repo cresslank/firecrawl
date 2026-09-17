@@ -7,7 +7,7 @@ x-common-service: &common-service
   build:
     context: apps/api
     args:
-      GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
+      GIT_SHA: ${FIRECRAWL_GIT_SHA:-}
 
   ulimits:
     nofile:
@@ -72,7 +72,7 @@ services:
     build:
       context: apps/playwright-service-ts
       args:
-        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-}
     environment:
       PORT: 3000
       PROXY_SERVER: ${PROXY_SERVER}
@@ -119,6 +119,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      # PostgreSQL is required in this hardened backend; FDB remains opt-in.
       nuq-postgres:
         condition: service_healthy
     ports:
@@ -139,7 +140,7 @@ services:
     build:
       context: apps/redis
       args:
-        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-}
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
     # replace the local Redis build with a reviewed, immutable Valkey image pin.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
@@ -156,7 +157,7 @@ services:
         compress: "true"
 
   rabbitmq:
-    image: rabbitmq:4.3.5-management@sha256:397fde82bc04522d88680b57cbf5d70caae715a76c957404e52e3f0fa056b8f3
+    image: rabbitmq:4.3.6-management@sha256:534e4fefc5f04dc1b0d823d27144eb6e20ee8e4d46448f819786a6a5fdaad74f
     networks:
       - backend
     command: rabbitmq-server
@@ -180,7 +181,7 @@ services:
     build:
       context: apps/nuq-postgres
       args:
-        GIT_SHA: ${FIRECRAWL_GIT_SHA:-unknown}
+        GIT_SHA: ${FIRECRAWL_GIT_SHA:-}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}

@@ -1,14 +1,16 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-ARG GOLANG_IMAGE=golang:1.25.13-trixie@sha256:1d7ec61c055b5e4c23bed5e87a0d4f6b543558b0c41744c74700a757e8cb4557
-ARG POSTGRES_IMAGE=postgres:17.10-trixie@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+ARG GOLANG_IMAGE=golang:1.26.8-trixie@sha256:771f3162219f7a66bb6be3fea1ba31f418932946a99ad9eac26ffd555dfcf393
+ARG POSTGRES_IMAGE=postgres:17.11-trixie@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
 FROM ${GOLANG_IMAGE} AS gosu-build
+ENV GOMAXPROCS=2 GOFLAGS=-p=2
 RUN /usr/local/go/bin/go install github.com/tianon/gosu@v0.0.0-20250923190938-6456aaa0f3c8
 
 FROM ${POSTGRES_IMAGE}
 ARG PG_MAJOR=17
-ARG GIT_SHA=unknown
+ARG GIT_SHA
+RUN printf '%s\n' "$GIT_SHA" | grep -Eq '^[0-9a-f]{40}$'
 LABEL org.opencontainers.image.revision=$GIT_SHA
 
 # Replace the upstream gosu binary with one built by a Go toolchain containing
