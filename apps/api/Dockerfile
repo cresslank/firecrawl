@@ -76,7 +76,9 @@ COPY native ./native
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/native/target \
-    npm_config_jobs=2 pnpm install --frozen-lockfile --child-concurrency=2
+    sha256sum native/Cargo.lock > /tmp/native-lock.sha256 && \
+    npm_config_jobs=2 pnpm install --frozen-lockfile --child-concurrency=2 && \
+    sha256sum -c /tmp/native-lock.sha256 && rm /tmp/native-lock.sha256
 
 COPY . .
 
