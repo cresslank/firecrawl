@@ -64,7 +64,6 @@ import {
 import { ScrapeRetryTracker } from "./retryTracker";
 import { executeTransformers } from "./transformers";
 import { LLMRefusalError } from "./transformers/llmExtract";
-import { urlSpecificParams } from "./lib/urlSpecificParams";
 import { shouldCheckRobots } from "./shouldCheckRobots";
 import { loadMock, MockState } from "./lib/mock";
 import { CostTracking } from "../../lib/cost-tracking";
@@ -170,10 +169,8 @@ export type Meta = {
   mock: MockState | null;
   /** Whether this scrape may OCR raster images: the request's parsers
    * include `image` (the default; a parse upload of an image always counts)
-   * and the team has the imageOcr flag with FirePDF configured. Lazy and
-   * memoized: the browser handoff, the image engine and the index only ask
-   * once a request actually looks like an image, so plain documents never
-   * pay for the team lookup. */
+   * and the deployment has image OCR switched on with FirePDF configured.
+   * Consulted by the browser handoff, the image engine and the index. */
   imageOcrEnabled: ImageOcrGate;
   pdfPrefetch:
     | {
@@ -346,9 +343,9 @@ function buildFeatureFlags(
     flags.add("pdf");
   } else if (imageExtensionFromUrlPath(lowerPath) !== null && imageOcrEnabled) {
     // Raster images are OCR'd through FirePDF when the request's parsers
-    // include `image` (the default) and the team has the imageOcr flag (see
-    // engines/image). Everyone else stays on the ordinary waterfall and
-    // fails as an unsupported file, exactly as before.
+    // include `image` (the default) and the deployment has image OCR on (see
+    // engines/image and lib/image-ocr-gate). Everything else stays on the
+    // ordinary waterfall and fails as an unsupported file, exactly as before.
     flags.add("image");
   }
 
@@ -424,16 +421,6 @@ async function buildMetaObject(
   internalOptions: InternalOptions,
   costTracking: CostTracking,
 ): Promise<Meta> {
-  const specParams =
-    urlSpecificParams[new URL(url).hostname.replace(/^www\./, "")];
-  if (specParams !== undefined) {
-    options = Object.assign(options, specParams.scrapeOptions);
-    internalOptions = Object.assign(
-      internalOptions,
-      specParams.internalOptions,
-    );
-  }
-
   if (internalOptions.forceEngine === undefined) {
     const forcedEngine = getEngineForUrl(url);
     if (forcedEngine !== undefined) {
@@ -538,16 +525,14 @@ async function buildMetaObject(
   const effectiveOptions = applyScrapeOptionsDefaults(options);
   // Image OCR follows the parsers option: on by default, off when the caller
   // sends a list without `image`. A parse upload of an image is a request to
-  // parse that file, so it counts regardless. The team flag is checked lazily
+  // parse that file, so it counts regardless. The deployment switch sits
   // behind this.
   const imageOcrEnabled = imageOcrGate(
-    internalOptions.teamId,
-    internalOptions.teamFlags,
     shouldParseImages(effectiveOptions.parsers) ||
       internalOptions.uploadedFile?.kind === "image",
   );
   // Only an image-extension URL needs the answer up front; everything else
-  // resolves lazily on an image handoff, if one ever happens.
+  // consults the gate on an image handoff, if one ever happens.
   const imageOcrForUrl =
     imageExtensionFromUrlPath(new URL(url).pathname) !== null &&
     (await imageOcrEnabled());

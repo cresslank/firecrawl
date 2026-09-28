@@ -10,10 +10,11 @@ import {
   supabaseGetExtractRequestByIdDirect,
   supabaseGetScrapeById,
 } from "./supabase-jobs";
+import { recordJobStorePostgresFallback } from "./job-store-fallback";
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type OperationalJobAccess = {
+type OperationalJobAccess = {
   teamId: string;
   kind: ApiJobKind;
   clientOrigin?: string;
@@ -26,9 +27,11 @@ async function resolveOperationalJobAccess(params: {
   fallback: () => Promise<OperationalJobAccess | null>;
 }): Promise<OperationalJobAccess | null> {
   let access: ApiJobAccess | null = null;
+  let readFailed = false;
   try {
     access = await readApiJobAccess(params.id);
   } catch (error) {
+    readFailed = true;
     logger.warn("Bigtable job access read failed; using legacy lookup", {
       error,
       jobId: params.id,
@@ -40,7 +43,15 @@ async function resolveOperationalJobAccess(params: {
   }
 
   const fallback = await params.fallback();
-  return fallback && Number.isFinite(fallback.expiresAtMs) ? fallback : null;
+  if (!fallback || !Number.isFinite(fallback.expiresAtMs)) return null;
+  // An expired row makes the caller answer 404 exactly as a miss would, so
+  // only a live row counts as PostgreSQL having been needed.
+  if (!readFailed && fallback.expiresAtMs > Date.now()) {
+    recordJobStorePostgresFallback("job_access", params.id, {
+      kind: fallback.kind,
+    });
+  }
+  return fallback;
 }
 
 export function getScrapeJobAccess(

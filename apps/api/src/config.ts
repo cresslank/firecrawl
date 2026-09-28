@@ -252,6 +252,11 @@ const configSchema = z.object({
 
   // Google Cloud Pub/Sub
   PUBSUB_CREDENTIALS: z.string().optional(),
+  // Prepended to every log topic name. Production leaves it unset and
+  // publishes to `<table>`; staging sets `staging-` so its rows land in the
+  // `staging-<table>` topics and the staging ClickHouse database instead of
+  // the production tables.
+  PUBSUB_TOPIC_PREFIX: z.string().default(""),
   // Publisher backlog cap, per process. Log publishing is fire-and-forget and
   // retries for up to five minutes, so during a stall the backlog is what
   // grows; rows beyond the cap are dropped and counted rather than letting a
@@ -280,6 +285,7 @@ const configSchema = z.object({
   BIGTABLE_FEEDBACK_JOBS_TABLE: z.string().optional(),
   BIGTABLE_SCRAPE_STATE_TABLE: z.string().optional(),
   BIGTABLE_EXTRACT_STATE_TABLE: z.string().optional(),
+  BIGTABLE_REQUEST_CREDITS_TABLE: z.string().optional(),
   BIGTABLE_CREDENTIALS: z.string().optional(),
 
   // ClickHouse (Search Analytics)
@@ -383,6 +389,18 @@ const configSchema = z.object({
   FIRE_PDF_PERCENT: z.coerce.number().min(0).max(100).default(10),
   FIRE_PDF_BASE_URL: z.string().optional(),
   FIRE_PDF_API_KEY: z.string().optional(),
+  // Cached fire-pdf results are looked up through this service when set
+  // (POST /cache/lookup, same key as FIRE_PDF_API_KEY), and fire-pdf writes
+  // them; without it the bucket is read and written from here.
+  FIRE_PDF_CACHE_BASE_URL: z.string().optional(),
+  // `parsers: [{ type: "pdf", refresh: true }]` skips the content cache and
+  // forces a fresh parse. Per team, per minute, budgeted here or by the
+  // cache service when one is configured; beyond the budget the request is
+  // served normally. 0 disables the option.
+  FIRE_PDF_CACHE_REFRESH_PER_MINUTE: z.coerce.number().int().min(0).default(10),
+  // Raster image OCR of image URLs and parse uploads through FirePDF (see
+  // lib/image-ocr-gate.ts). Needs FIRE_PDF_BASE_URL.
+  IMAGE_OCR_ENABLED: z.stringbool().default(false),
   // Async /jobs rollout is a separate, server-controlled cohort inside
   // traffic already selected for FirePDF. It is disabled by default.
   FIRE_PDF_ASYNC_PERCENT: z.coerce.number().min(0).max(100).default(0),
@@ -583,9 +601,7 @@ const configSchema = z.object({
   WIKIPEDIA_ENTERPRISE_PASSWORD: z.string().optional(),
 
   // Browser Service
-  BROWSER_SERVICE_URL: z.string().optional(),
-  BROWSER_SERVICE_API_KEY: z.string().optional(),
-  BROWSER_SERVICE_WEBHOOK_SECRET: z.string().optional(),
+  HANGAR_URL: z.url().optional(),
 
   // Audio (avgrab)
   AVGRAB_SERVICE_URL: z.string().optional(),

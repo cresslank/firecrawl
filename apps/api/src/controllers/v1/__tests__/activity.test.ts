@@ -76,11 +76,14 @@ describe("activityController", () => {
     expect(endpointRes.json).toHaveBeenCalledWith({
       success: false,
       error:
-        "Invalid endpoint filter. Must be one of: scrape, crawl, batch_scrape, search, extract, llmstxt, deep_research, map, agent, browser, interact",
+        "Invalid endpoint filter. Must be one of: alexandria, scrape, crawl, batch_scrape, search, extract, llmstxt, deep_research, map, agent, browser, interact",
     });
 
     const cursorRes = makeRes();
-    await activityController(makeReq({ cursor: "bm8tc2VwYXJhdG9y" }), cursorRes);
+    await activityController(
+      makeReq({ cursor: "bm8tc2VwYXJhdG9y" }),
+      cursorRes,
+    );
 
     expect(cursorRes.status).toHaveBeenCalledWith(400);
     expect(cursorRes.json).toHaveBeenCalledWith({
@@ -90,7 +93,7 @@ describe("activityController", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it("queries public_requests for the authenticated team and 24-hour window", async () => {
+  it("queries requests for the authenticated team and 24-hour window", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-16T12:34:56.789Z"));
     mockRows([]);
@@ -100,7 +103,8 @@ describe("activityController", () => {
 
     expect(mocks.query).toHaveBeenCalledOnce();
     const options = mocks.query.mock.calls[0][0];
-    expect(options.query).toContain("FROM public_requests");
+    expect(options.query).toContain("FROM requests");
+    expect(options.query).toContain("LIMIT 1 BY id");
     expect(options.query).toContain("team_id = {teamId: UUID}");
     expect(options.query).toContain(
       "created_at >= {windowStart: DateTime64(3)}",
@@ -217,14 +221,24 @@ describe("activityController", () => {
 
     await activityController(makeReq(), res);
 
-    expect(mocks.loggerError).toHaveBeenCalledWith(
-      "Failed to fetch activity",
-      { error },
-    );
+    expect(mocks.loggerError).toHaveBeenCalledWith("Failed to fetch activity", {
+      error,
+    });
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       error: "Failed to fetch activity.",
     });
+  });
+
+  it("accepts the Alexandria activity filter and includes historical scrape rows", async () => {
+    mockRows([]);
+    const res = makeRes();
+    await activityController(makeReq({ endpoint: "alexandria" }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mocks.query).toHaveBeenCalled();
+    expect(mocks.query.mock.calls.at(-1)?.[0].query).toContain(
+      "(kind = 'alexandria' OR (kind = 'scrape' AND startsWith(target_hint, 'alexandria:')))",
+    );
   });
 });

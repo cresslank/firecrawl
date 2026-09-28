@@ -1,4 +1,4 @@
-ARG REDIS_IMAGE=redis:8.6.6-alpine@sha256:75934ddb37bfaebe3b4082ba673cac39f66495244134f33dd0a502ce03cdcd36
+ARG REDIS_IMAGE=redis:8.6.7-alpine@sha256:ac2da09bc822f325a9f68f533120b86fa39c1b8db46b3aa7c1bbea7fdfd4fcba
 FROM ${REDIS_IMAGE}
 
 ARG GIT_SHA

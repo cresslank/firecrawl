@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22.23.2-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS base
+FROM node:22.23.3-trixie-slim@sha256:b26b04c123d9ff8ab646ceb18b9d75a1173acf64b9a401094b906d27b29338d4 AS base
 
 # See apps/api/Dockerfile: this network blackholes Debian's default APT UA.
 RUN printf 'Acquire::http::User-Agent "Debian docker-build";\n' > /etc/apt/apt.conf.d/99user-agent

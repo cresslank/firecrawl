@@ -48,6 +48,7 @@ import { externalRequestId } from "../../lib/external-request-id";
 import { getScrapeZDR } from "../../lib/zdr-helpers";
 import { emitRejectedScrapeActivityEvents } from "../../lib/siem-logging";
 import { UnsupportedSiteError } from "../../lib/error";
+import { requestCreditsShards } from "../../lib/request-credits-store";
 
 export async function batchScrapeController(
   req: RequestWithAuth<{}, BatchScrapeResponse, BatchScrapeRequest>,
@@ -234,6 +235,7 @@ export async function batchScrapeController(
           req.acuc?.api_key_id ?? null,
           {
             endpoint: "batch_scrape",
+            externalRequestId: externalRequestId(req),
             jobId: id,
             // Appends reuse the batch id but each append's threat scans are a
             // fresh charge — a shared key would underbill them. Appends stay
@@ -319,6 +321,7 @@ export async function batchScrapeController(
       jobAccessExpiresAt: new Date(
         Date.now() + (req.acuc?.flags?.crawlTtlHours ?? 24) * 60 * 60 * 1000,
       ),
+      creditsShards: requestCreditsShards(urls.length),
     });
   }
 
@@ -404,7 +407,11 @@ export async function batchScrapeController(
     });
   }
   logger.debug("Using job priority " + jobPriority, { jobPriority });
-  const billing = { endpoint: "batch_scrape" as const, jobId: id };
+  const billing = {
+    endpoint: "batch_scrape" as const,
+    jobId: id,
+    externalRequestId: externalRequestId(req),
+  };
 
   const jobs = urls.map(x => ({
     jobId: uuidv7(),

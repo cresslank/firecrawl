@@ -84,8 +84,8 @@ export function detectUploadedFileKind(
     return "document";
   }
 
-  // Image uploads are OCR'd through FirePDF for teams with the imageOcr
-  // flag; for everyone else they stay unsupported.
+  // Image uploads are OCR'd through FirePDF where the deployment has image
+  // OCR on (lib/image-ocr-gate.ts); otherwise they stay unsupported.
   const isImage =
     imageOcrEnabled &&
     (IMAGE_EXTENSIONS.has(extension) ||
@@ -258,11 +258,7 @@ export function parseMultipartPayloadMiddleware(
     }
   }
 
-  // authMiddleware runs before this middleware, so the team's flags are
-  // available to decide whether image uploads are accepted.
-  const imageOcrEnabled = isImageOcrEnabled(
-    (req as unknown as RequestWithAuth).acuc?.flags,
-  );
+  const imageOcrEnabled = isImageOcrEnabled();
   const kind = detectUploadedFileKind(
     file.originalname || "",
     file.mimetype,
@@ -368,9 +364,12 @@ export async function parseController(
       const zeroDataRetention =
         getScrapeZDR(req.acuc?.flags) === "forced" ||
         (req.body.zeroDataRetention ?? false);
-      const billing: BillingMetadata = req.body.__agentInterop
-        ? { endpoint: "agent" as const, jobId }
-        : { endpoint: "parse" as const, jobId };
+      const billing: BillingMetadata = {
+        ...(req.body.__agentInterop
+          ? { endpoint: "agent" as const, jobId }
+          : { endpoint: "parse" as const, jobId }),
+        externalRequestId: externalRequestId(req),
+      };
 
       if (
         req.body.__agentInterop &&

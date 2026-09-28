@@ -38,6 +38,7 @@ import { calculateThreatScanCredits } from "../../lib/scrape-billing";
 import { billTeam } from "../../services/billing/credit_billing";
 import { getEffectiveConcurrencyLimit } from "../../lib/concurrency-limit";
 import { emitRejectedScrapeActivityEvent } from "../../lib/siem-logging";
+import { requestCreditsShards } from "../../lib/request-credits-store";
 
 export async function crawlController(
   req: RequestWithAuth<{}, CrawlResponse, CrawlRequest>,
@@ -124,7 +125,7 @@ export async function crawlController(
           // No chargeId: a fresh crawl id is minted per request and the
           // rejected crawl is never persisted or queued, so there is no
           // stable per-charge identity that could dedupe a retry.
-          { endpoint: "crawl" },
+          { endpoint: "crawl", externalRequestId: externalRequestId(req) },
         ).catch(error => {
           _logger.error(
             `Failed to bill team ${req.auth.team_id} for ${threatScanCredits} threat scan credit(s): ${error}`,
@@ -195,6 +196,7 @@ export async function crawlController(
     jobAccessExpiresAt: new Date(
       Date.now() + (req.acuc?.flags?.crawlTtlHours ?? 24) * 60 * 60 * 1000,
     ),
+    creditsShards: requestCreditsShards(req.body.limit ?? 10_000),
   });
 
   // checkCreditsMiddleware (always runs before this controller) is the source
@@ -331,7 +333,11 @@ export async function crawlController(
       internalOptions: sc.internalOptions,
       origin: req.body.origin,
       integration: req.body.integration,
-      billing: { endpoint: "crawl", jobId: id },
+      billing: {
+        endpoint: "crawl",
+        jobId: id,
+        externalRequestId: externalRequestId(req),
+      },
       crawl_id: id,
       webhook: req.body.webhook,
       v1: true,

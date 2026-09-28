@@ -26,6 +26,7 @@ from .types import (
     CrawlJob,
     CrawlParamsRequest,
     PDFParser,
+    ImageParser,
     CrawlParamsData,
     WebhookConfig,
     AgentWebhookConfig,
@@ -166,7 +167,7 @@ class FirecrawlClient:
         timeout: Optional[int] = None,
         wait_for: Optional[int] = None,
         mobile: Optional[bool] = None,
-        parsers: Optional[Union[List[str], List[Union[str, PDFParser]]]] = None,
+        parsers: Optional[Union[List[str], List[Union[str, PDFParser, ImageParser]]]] = None,
         actions: Optional[List[Union['WaitAction', 'ScreenshotAction', 'ClickAction', 'WriteAction', 'PressAction', 'ScrollAction', 'ScrapeAction', 'ExecuteJavascriptAction', 'PDFAction']]] = None,
         location: Optional['Location'] = None,
         skip_tls_verification: Optional[bool] = None,
@@ -183,6 +184,7 @@ class FirecrawlClient:
         audit_metadata: Optional[AuditMetadata] = None,
         integration: Optional[str] = None,
         domain_tools: Optional[bool] = None,
+        tool_detail: Optional[Literal["compact", "summary", "full"]] = None,
     ) -> Union[Document, AlexandriaScrapeData]:
         """
         Scrape a single URL and return the document.
@@ -210,6 +212,7 @@ class FirecrawlClient:
             lockdown: Serve only previously cached results; never make outbound requests. Returns 404 SCRAPE_LOCKDOWN_CACHE_MISS on cache miss.
             threat_protection: Enterprise per-request override of the team's threat protection policy
             profile: Browser profile for persistent state (e.g. {"name": "my-profile", "saveChanges": True})
+            tool_detail: "compact" returns provider, capability and description; "summary" (default) adds metadata; "full" includes contracts when domain discovery is enabled.
             audit_metadata: Metadata to include in SIEM logging events
         Returns:
             Document
@@ -241,8 +244,9 @@ class FirecrawlClient:
                 audit_metadata=audit_metadata,
                 integration=integration,
                 domain_tools=domain_tools,
+                tool_detail=tool_detail,
             ).items() if v is not None}
-        ) if any(v is not None for v in [formats, headers, include_tags, exclude_tags, only_main_content, timeout, wait_for, mobile, parsers, actions, location, skip_tls_verification, remove_base64_images, fast_mode, use_mock, block_ads, proxy, max_age, store_in_cache, lockdown, threat_protection, profile, audit_metadata, integration, domain_tools]) else None
+        ) if any(v is not None for v in [formats, headers, include_tags, exclude_tags, only_main_content, timeout, wait_for, mobile, parsers, actions, location, skip_tls_verification, remove_base64_images, fast_mode, use_mock, block_ads, proxy, max_age, store_in_cache, lockdown, threat_protection, profile, audit_metadata, integration, domain_tools, tool_detail]) else None
         if alexandria is not None:
             if url is not None or auto_resume is not None or (options and set(options.model_dump(exclude_none=True, exclude_unset=True)) - {"timeout", "integration"}):
                 raise ValueError("alexandria cannot be combined with URL scrape options")
@@ -467,6 +471,7 @@ class FirecrawlClient:
         *,
         sources: Optional[List[SourceOption]] = None,
         domain_tools: Optional[bool] = None,
+        tool_detail: Optional[Literal["compact", "summary", "full"]] = None,
         categories: Optional[List[CategoryOption]] = None,
         include_domains: Optional[List[str]] = None,
         exclude_domains: Optional[List[str]] = None,
@@ -487,6 +492,7 @@ class FirecrawlClient:
 
         Args:
             query: Search query string
+            tool_detail: "compact" (default) returns provider, capability and description; "summary" adds metadata and a follow-up request; "full" includes contracts.
             limit: Maximum number of results to return (default: 5)
             tbs: Time-based search filter
             location: Location string for search
@@ -508,6 +514,7 @@ class FirecrawlClient:
             query=query,
             sources=sources,
             domain_tools=domain_tools,
+            tool_detail=tool_detail,
             categories=categories,
             include_domains=include_domains,
             exclude_domains=exclude_domains,
@@ -590,7 +597,7 @@ class FirecrawlClient:
         only_main_content: Optional[bool] = None,
         wait_for: Optional[int] = None,
         mobile: Optional[bool] = None,
-        parsers: Optional[Union[List[str], List[Union[str, PDFParser]]]] = None,
+        parsers: Optional[Union[List[str], List[Union[str, PDFParser, ImageParser]]]] = None,
         actions: Optional[List[Union['WaitAction', 'ScreenshotAction', 'ClickAction', 'WriteAction', 'PressAction', 'ScrollAction', 'ScrapeAction', 'ExecuteJavascriptAction', 'PDFAction']]] = None,
         location: Optional['Location'] = None,
         skip_tls_verification: Optional[bool] = None,
@@ -752,7 +759,7 @@ class FirecrawlClient:
         timeout: Optional[int] = None,
         wait_for: Optional[int] = None,
         mobile: Optional[bool] = None,
-        parsers: Optional[Union[List[str], List[Union[str, PDFParser]]]] = None,
+        parsers: Optional[Union[List[str], List[Union[str, PDFParser, ImageParser]]]] = None,
         actions: Optional[List[Union['WaitAction', 'ScreenshotAction', 'ClickAction', 'WriteAction', 'PressAction', 'ScrollAction', 'ScrapeAction', 'ExecuteJavascriptAction', 'PDFAction']]] = None,
         location: Optional['Location'] = None,
         skip_tls_verification: Optional[bool] = None,
@@ -1273,7 +1280,7 @@ class FirecrawlClient:
         timeout: Optional[int] = None,
         wait_for: Optional[int] = None,
         mobile: Optional[bool] = None,
-        parsers: Optional[Union[List[str], List[Union[str, PDFParser]]]] = None,
+        parsers: Optional[Union[List[str], List[Union[str, PDFParser, ImageParser]]]] = None,
         actions: Optional[List[Union['WaitAction', 'ScreenshotAction', 'ClickAction', 'WriteAction', 'PressAction', 'ScrollAction', 'ScrapeAction', 'ExecuteJavascriptAction', 'PDFAction']]] = None,
         location: Optional['Location'] = None,
         skip_tls_verification: Optional[bool] = None,
@@ -1786,7 +1793,7 @@ class FirecrawlClient:
         timeout: Optional[int] = None,
         wait_for: Optional[int] = None,
         mobile: Optional[bool] = None,
-        parsers: Optional[Union[List[str], List[Union[str, PDFParser]]]] = None,
+        parsers: Optional[Union[List[str], List[Union[str, PDFParser, ImageParser]]]] = None,
         actions: Optional[List[Union['WaitAction', 'ScreenshotAction', 'ClickAction', 'WriteAction', 'PressAction', 'ScrollAction', 'ScrapeAction', 'ExecuteJavascriptAction', 'PDFAction']]] = None,
         location: Optional['Location'] = None,
         skip_tls_verification: Optional[bool] = None,

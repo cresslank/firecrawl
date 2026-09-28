@@ -41,6 +41,10 @@ import { calculateThreatScanCredits } from "../../lib/scrape-billing";
 import { billTeam } from "../../services/billing/credit_billing";
 import { getEffectiveConcurrencyLimit } from "../../lib/concurrency-limit";
 import { emitRejectedScrapeActivityEvent } from "../../lib/siem-logging";
+import {
+  initializeRequestCredits,
+  requestCreditsShards,
+} from "../../lib/request-credits-store";
 
 export async function crawlController(
   req: RequestWithAuth<{}, CrawlResponse, CrawlRequest>,
@@ -305,6 +309,14 @@ export async function crawlController(
     originalBodyLimit: preNormalizedBody.limit,
   });
 
+  const creditsShards = requestCreditsShards(finalCrawlerOptions.limit);
+  await initializeRequestCredits(id, creditsShards).catch(error => {
+    logger.warn("Failed to initialize Bigtable request credits", {
+      error,
+      shards: creditsShards,
+    });
+  });
+
   const effectiveConcurrency = await getEffectiveConcurrencyLimit(
     req.auth.team_id,
     req.acuc?.org_id ?? null,
@@ -377,7 +389,11 @@ export async function crawlController(
       internalOptions: sc.internalOptions,
       origin: req.body.origin,
       integration: req.body.integration,
-      billing: { endpoint: "crawl", jobId: id },
+      billing: {
+        endpoint: "crawl",
+        jobId: id,
+        externalRequestId: externalRequestId(req),
+      },
       crawl_id: id,
       webhook: req.body.webhook,
       v1: true,
