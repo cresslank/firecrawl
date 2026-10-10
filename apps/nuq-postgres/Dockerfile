@@ -1,7 +1,7 @@
 # Build a Postgres image that runs nuq.sql during initdb
 
 ARG PG_MAJOR=17
-ARG GOLANG_IMAGE=golang:1.26.8-trixie@sha256:bdca99a00bc16590cb1a0bb4e698f5fc5d6a64e4d5eef13d9f18a0ee08e5fa65
+ARG GOLANG_IMAGE=golang:1.26.9-trixie@sha256:f89535b7caea67fa9ff0ba009894bff8f3be915e49cb635477c8ce04e045db5d
 ARG POSTGRES_IMAGE=postgres:17.11-trixie@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
 FROM ${GOLANG_IMAGE} AS gosu-build
 ENV GOMAXPROCS=2 GOFLAGS=-p=2
