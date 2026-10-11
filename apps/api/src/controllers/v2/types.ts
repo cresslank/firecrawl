@@ -1,4 +1,5 @@
 import type { AgentInteropStatus } from "../../lib/agent-interop";
+import type { ThirdPartyDataTermsRequiredError } from "../../lib/exchange";
 import { Request, Response } from "express";
 import { hasCategory } from "../../lib/search-query-builder";
 import { config } from "../../config";
@@ -364,10 +365,14 @@ const jsonFormatWithOptions = z.strictObject({
     })
     .superRefine(addStrictSchemaIssue),
   prompt: z.string().max(10000).optional(),
+  // Deprecated: lifted into the top-level checkPromptInjection at parse time.
   checkPromptInjection: z.boolean().optional(),
 });
 
-export type JsonFormatWithOptions = z.output<typeof jsonFormatWithOptions>;
+export type JsonFormatWithOptions = Omit<
+  z.output<typeof jsonFormatWithOptions>,
+  "checkPromptInjection"
+>;
 
 // "Deterministic JSON" — same shape as json mode, but extraction is performed by
 // reusable-json-mode (a cached, reusable JS extractor run in the code-sandbox)
@@ -462,6 +467,15 @@ const queryFormatWithOptions = z.strictObject({
 
 type QueryFormatWithOptions = z.output<typeof queryFormatWithOptions>;
 
+// Which engine answers branding decisions: "fast" (Jev), "standard" (the
+// LLM) or "auto" (the LLM for now). Internal for now: honored only for teams
+// listed in BRANDING_JEV_TEAM_IDS and ignored for everyone else
+// (lib/branding/jev.ts).
+const brandingFormatWithOptions = z.strictObject({
+  type: z.literal("branding"),
+  mode: z.enum(["auto", "fast", "standard"]).optional(),
+});
+
 export type FormatObject =
   | { type: "markdown" }
   | { type: "html" }
@@ -478,7 +492,7 @@ export type FormatObject =
   | QuestionFormatWithOptions
   | HighlightsFormatWithOptions
   | QueryFormatWithOptions
-  | { type: "branding" }
+  | z.output<typeof brandingFormatWithOptions>
   | { type: "product" }
   | { type: "menu" }
   | { type: "audio" }
@@ -771,7 +785,7 @@ const scrapeOptionFields = z.strictObject({
           changeTrackingFormatWithOptions,
           screenshotFormatWithOptions,
           attributesFormatWithOptions,
-          z.strictObject({ type: z.literal("branding") }),
+          brandingFormatWithOptions,
           z.strictObject({ type: z.literal("product") }),
           z.strictObject({ type: z.literal("menu") }),
           questionFormatWithOptions,
@@ -834,6 +848,7 @@ const scrapeOptionFields = z.strictObject({
   minAge: z.int().gte(0).optional(),
   storeInCache: z.boolean().prefault(true),
   lockdown: z.boolean().prefault(false),
+  checkPromptInjection: z.boolean().prefault(false),
   safeMode: z.boolean().optional(),
   redactPII: redactPIISchema,
   // Enterprise: per-request field-level override of the org's threat
@@ -856,13 +871,23 @@ const scrapeOptionFields = z.strictObject({
   __forceFirePDF: z.boolean().prefault(false).optional(),
 });
 
-const baseScrapeOptions = scrapeOptionFields.refine(
-  options => !(options.profile && options.lockdown),
-  {
+const baseScrapeOptions = scrapeOptionFields
+  .refine(options => !(options.profile && options.lockdown), {
     message: "Profiles require live browsing and cannot be used with lockdown.",
     path: ["profile"],
-  },
-);
+  })
+  .refine(
+    options =>
+      !(
+        options.checkPromptInjection &&
+        options.formats.some(f => f.type === "rawBase64")
+      ),
+    {
+      message:
+        "checkPromptInjection scans page markdown and cannot be used with the rawBase64 format.",
+      path: ["checkPromptInjection"],
+    },
+  );
 
 type ScrapeOptionsBase = z.infer<typeof baseScrapeOptions>;
 
@@ -892,6 +917,34 @@ export const applyScrapeOptionsDefaults = <T extends ScrapeOptionsBase>(
       : true),
 });
 
+/**
+ * Folds the deprecated json-format checkPromptInjection into the top-level
+ * flag and drops it from the format. Also accepts raw stored monitor options.
+ */
+export function liftCheckPromptInjection<
+  T extends { formats?: unknown[]; checkPromptInjection?: unknown },
+>(options: T): T {
+  let requestedOnFormat = false;
+  const formats = options.formats?.map(format => {
+    if (
+      typeof format !== "object" ||
+      format === null ||
+      !("checkPromptInjection" in format)
+    ) {
+      return format;
+    }
+    const { checkPromptInjection, ...rest } = format;
+    requestedOnFormat ||= checkPromptInjection === true;
+    return rest;
+  });
+  return {
+    ...options,
+    formats,
+    checkPromptInjection:
+      options.checkPromptInjection === true || requestedOnFormat,
+  };
+}
+
 // Base transform function that handles both nullable and non-nullable cases
 // Uses generic type to preserve all fields from extended schemas
 const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
@@ -899,7 +952,7 @@ const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
 ): T extends undefined ? undefined : T => {
   if (!obj) return obj as T extends undefined ? undefined : T;
   // Handle timeout
-  let result = applyScrapeOptionsDefaults(obj);
+  let result = liftCheckPromptInjection(applyScrapeOptionsDefaults(obj));
   if (
     obj.formats.find(x => typeof x === "object" && x.type === "json") &&
     obj.timeout === 30000
@@ -1426,6 +1479,14 @@ export const mapRequestSchema = strictWithMessage(
 export type MapRequest = z.infer<typeof mapRequestSchema>;
 export type MapRequestInput = z.input<typeof mapRequestSchema>;
 
+/** The third-party provider that served an Exchange scrape, what the access
+ * cost, and every provider tried for it in order. */
+export type DocumentProvider = {
+  id: string;
+  creditsCost: number;
+  steps: { provider: string; status: string; creditsCost?: number }[];
+};
+
 export type Document = {
   title?: string;
   description?: string;
@@ -1542,6 +1603,7 @@ export type Document = {
     indexId?: string; // ID used to store the document in the index (GCS)
     concurrencyLimited?: boolean;
     concurrencyQueueDurationMs?: number;
+    provider?: DocumentProvider;
     // [key: string]: string | string[] | number | { smartScrape: number; other: number; total: number } | undefined;
   };
   serpResults?: {
@@ -1802,6 +1864,11 @@ export type AgentStatusResponse =
       status: "processing" | "completed" | "failed";
       error?: string;
       data?: any;
+      /** Best-effort JSON on a failed run; `data` remains completed-only. */
+      partial?: unknown;
+      /** Only present when the caller supplied a JSON Schema. */
+      partialSchemaValid?: boolean;
+      stopReason?: "credit_limit_reached";
       model?: "spark-1-pro" | "spark-1-mini" | "spark-2";
       effort?: "low" | "medium" | "high";
       expiresAt: string;
@@ -1836,6 +1903,9 @@ type AgentThreadRun = {
   message: string | null;
   // Only present when the request asked for includeData.
   data?: unknown;
+  partial?: unknown;
+  partialSchemaValid?: boolean;
+  stopReason?: "credit_limit_reached";
   suggestions?: AgentSuggestion[] | null;
   pendingApproval?: AgentPendingApproval | null;
   exchange?: AgentExchangeSummary | null;
@@ -2013,6 +2083,7 @@ export type CrawlErrorsResponse =
         url: string;
         code?: ErrorCodes;
         error: string;
+        requiresAction?: ThirdPartyDataTermsRequiredError["requiresAction"];
       }[];
       robotsBlocked: string[];
     };
@@ -2069,6 +2140,8 @@ export type TeamFlags = {
   bypassCreditChecks?: boolean;
   debugBranding?: boolean;
   maxBrowserSessions?: number;
+  // grants the privileged large-PDF size cap (PDF_BY_REFERENCE_MAX_BYTES_PRIVILEGED)
+  largePdfs?: boolean;
   researchBeta?: boolean;
   menuBeta?: boolean;
   enrichBeta?: boolean;
@@ -2297,6 +2370,9 @@ export function fromV1ScrapeOptions(
           }
         : {}),
       location: v1ScrapeOptions.location ?? v1ScrapeOptions.geolocation,
+      checkPromptInjection: (
+        v1ScrapeOptions.jsonOptions || v1ScrapeOptions.extract
+      )?.checkPromptInjection,
       formats: v1ScrapeOptions.formats
         .map(x => {
           // json and extract is standardized down to extract fmt in v1 -- fine to take one and dismiss the other
@@ -2306,7 +2382,6 @@ export function fromV1ScrapeOptions(
               type: "json",
               schema: opts?.schema,
               prompt: opts?.prompt,
-              checkPromptInjection: opts?.checkPromptInjection ?? false,
             };
             return fmt;
           } else if (x === "json") {
@@ -2317,7 +2392,6 @@ export function fromV1ScrapeOptions(
                 type: "json",
                 schema: opts.schema,
                 prompt: opts.prompt,
-                checkPromptInjection: opts.checkPromptInjection ?? false,
               };
               return includesFormat(v1ScrapeOptions.formats as any, "extract")
                 ? null
@@ -2423,6 +2497,10 @@ const developerCategoryOptions = z.strictObject({
   type: z.literal("developer"),
 });
 
+const govCategoryOptions = z.strictObject({
+  type: z.literal("gov"),
+});
+
 const developerCategoryAliases = new Set([
   "repo",
   "code",
@@ -2481,6 +2559,8 @@ const searchDomainSchema = z
 export const searchRequestSchema = z
   .strictObject({
     query: z.string(),
+    objective: z.string().trim().min(1).max(5000).optional().catch(undefined),
+    clientModel: z.string().trim().min(1).max(128).optional().catch(undefined),
     limit: z.int().positive().finite().max(100).optional().prefault(10),
     tbs: z.string().optional(),
     filter: z.string().optional(),
@@ -2506,13 +2586,14 @@ export const searchRequestSchema = z
       .preprocess(
         normalizeDeveloperCategoryAliases,
         z.union([
-          z.array(z.enum(["github", "research", "pdf", "developer"])),
+          z.array(z.enum(["github", "research", "pdf", "developer", "gov"])),
           z.array(
             z.union([
               githubCategoryOptions,
               researchCategoryOptions,
               pdfCategoryOptions,
               developerCategoryOptions,
+              govCategoryOptions,
             ]),
           ),
         ]),
@@ -2592,6 +2673,10 @@ export const searchRequestSchema = z
     const categories = x.categories ?? [];
     return !hasCategory(categories, "developer") || categories.length === 1;
   }, "the developer category cannot be combined with other categories")
+  .refine(x => {
+    const categories = x.categories ?? [];
+    return !hasCategory(categories, "gov") || categories.length === 1;
+  }, "the gov category cannot be combined with other categories")
   .refine(x => waitForRefine(x.scrapeOptions), waitForRefineOpts)
   .transform(x => {
     const country =
@@ -2658,6 +2743,10 @@ export const searchRequestSchema = z
             case "developer":
               return {
                 type: "developer" as const,
+              };
+            case "gov":
+              return {
+                type: "gov" as const,
               };
             default:
               return { type: c as any };
@@ -2917,6 +3006,7 @@ export type EndpointFeedbackResponse =
       creditsRefunded: number;
       alreadySubmitted?: boolean;
       dailyCapReached?: boolean;
+      websiteCapReached?: boolean;
       creditsRefundedToday?: number;
       dailyRefundCap?: number;
       warning?: string;

@@ -1,4 +1,5 @@
 import type { AgentInteropStatus } from "../../lib/agent-interop";
+import type { ThirdPartyDataTermsRequiredError } from "../../lib/exchange";
 import { Request } from "express";
 import { config } from "../../config";
 import { z } from "zod";
@@ -1303,6 +1304,7 @@ export type CrawlErrorsResponse =
         timestamp?: string;
         url: string;
         error: string;
+        requiresAction?: ThirdPartyDataTermsRequiredError["requiresAction"];
       }[];
       robotsBlocked: string[];
     };
@@ -1327,13 +1329,19 @@ export type AuthCreditUsageChunk = {
   org_id: string;
   flags: TeamFlags;
 
-  // teams.banned surfaced from auth_chunk_1 — banned teams are rejected (403)
+  // teams.banned surfaced from auth_chunk_2 — banned teams are rejected (403)
   // in supaAuthenticateUser. Optional because pre-rollout cached ACUC entries
   // and the bypass/preview mocks omit it (treated as not banned).
   is_banned?: boolean;
 
   // appended on JS-side
   is_extract?: boolean;
+
+  // The team's effective Autumn limits and plan, always set by
+  // getACUC/getACUCTeam.
+  concurrency_limit: number;
+  rate_limit_multiplier: number;
+  is_paid_plan: boolean;
 
   // Agent signup: populated when the key is agent-provisioned
   _agentSponsor?: {
@@ -1382,6 +1390,8 @@ export type TeamFlags = {
   bypassCreditChecks?: boolean;
   debugBranding?: boolean;
   maxBrowserSessions?: number;
+  // grants the privileged large-PDF size cap (PDF_BY_REFERENCE_MAX_BYTES_PRIVILEGED)
+  largePdfs?: boolean;
   // POST /v2/search/:jobId/feedback returns 403 TEAM_OPTED_OUT when true.
   searchFeedbackOptOut?: boolean;
   researchBeta?: boolean;

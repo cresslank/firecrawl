@@ -8,6 +8,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { fireworks } from "@ai-sdk/fireworks";
 import { deepinfra } from "@ai-sdk/deepinfra";
 import { createVertex } from "@ai-sdk/google-vertex";
+import { withUsageTelemetry } from "./ai-usage-telemetry";
 
 type Provider =
   | "openai"
@@ -53,11 +54,17 @@ const providerList: Record<Provider, any> = {
   }),
 };
 
-export function getModel(name: string, provider: Provider = defaultProvider) {
+export function getModel(
+  name: string,
+  provider: Provider = defaultProvider,
+  options?: { ignoreModelOverride?: boolean },
+) {
   if (name === "gemini-2.5-pro") {
     name = "gemini-2.5-pro";
   }
-  const modelName = config.MODEL_NAME || name;
+  const modelName = options?.ignoreModelOverride
+    ? name
+    : config.MODEL_NAME || name;
   // o3-mini returns empty text via the Responses API. OpenAI-compatible
   // backends may also implement only Chat Completions, so let self-hosters opt
   // into that transport without changing the official OpenAI default.
@@ -65,9 +72,9 @@ export function getModel(name: string, provider: Provider = defaultProvider) {
     provider === "openai" &&
     (modelName.startsWith("o3-mini") || config.OPENAI_USE_CHAT_COMPLETIONS)
   ) {
-    return providerList.openai.chat(modelName);
+    return withUsageTelemetry(providerList.openai.chat(modelName));
   }
-  return providerList[provider](modelName);
+  return withUsageTelemetry(providerList[provider](modelName));
 }
 
 export function getEmbeddingModel(

@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
     fireworks: model("fireworks"),
     deepinfra: model("deepinfra"),
     vertex: model("vertex"),
+    withUsageTelemetry: vi.fn((model: unknown) => model),
   };
 });
 
@@ -48,6 +49,10 @@ vi.mock("@ai-sdk/fireworks", () => ({ fireworks: mocks.fireworks }));
 vi.mock("@ai-sdk/deepinfra", () => ({ deepinfra: mocks.deepinfra }));
 vi.mock("@ai-sdk/google-vertex", () => ({
   createVertex: () => mocks.vertex,
+}));
+
+vi.mock("./ai-usage-telemetry", () => ({
+  withUsageTelemetry: mocks.withUsageTelemetry,
 }));
 
 import { getModel } from "./generic-ai";
@@ -86,6 +91,33 @@ describe("getModel OpenAI transport selection", () => {
     });
     expect(mocks.openaiChat).toHaveBeenCalledWith("o3-mini-2025-01-31");
     expect(mocks.openaiResponses).not.toHaveBeenCalled();
+  });
+
+  it("allows upstream calls to ignore the model override without changing transport", () => {
+    mocks.config.MODEL_NAME = "local-model";
+    mocks.config.OPENAI_USE_CHAT_COMPLETIONS = true;
+
+    expect(getModel("requested-model", "openai", { ignoreModelOverride: true })).toEqual({
+      provider: "openai.chat",
+      name: "requested-model",
+    });
+    expect(mocks.withUsageTelemetry).toHaveBeenCalledWith({
+      provider: "openai.chat",
+      name: "requested-model",
+    });
+  });
+
+  it("keeps the model override by default and wraps Responses models", () => {
+    mocks.config.MODEL_NAME = "local-model";
+
+    expect(getModel("requested-model", "openai")).toEqual({
+      provider: "openai.responses",
+      name: "local-model",
+    });
+    expect(mocks.withUsageTelemetry).toHaveBeenCalledWith({
+      provider: "openai.responses",
+      name: "local-model",
+    });
   });
 
   it("does not affect non-OpenAI providers", () => {
