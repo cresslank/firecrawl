@@ -1630,7 +1630,6 @@ export type VideoItem = {
 };
 
 export type ErrorResponse = {
-  agent_hints?: string[];
   success: false;
   code?: ErrorCodes;
   error: string;
@@ -1643,7 +1642,6 @@ export type ScrapeResponse =
   | ErrorResponse
   | {
       success: true;
-      agent_hints?: string[];
       warning?: string;
       data: Document & {
         tools?: import("../../services/alexandria/contracts").DiscoveredTool[];
@@ -2009,7 +2007,6 @@ export type MapResponse =
   | ErrorResponse
   | {
       success: true;
-      agent_hints?: string[];
       id: string;
       links?: MapDocument[];
       warning?: string;
@@ -2559,8 +2556,6 @@ const searchDomainSchema = z
 export const searchRequestSchema = z
   .strictObject({
     query: z.string(),
-    objective: z.string().trim().min(1).max(5000).optional().catch(undefined),
-    clientModel: z.string().trim().min(1).max(128).optional().catch(undefined),
     limit: z.int().positive().finite().max(100).optional().prefault(10),
     tbs: z.string().optional(),
     filter: z.string().optional(),
@@ -2772,7 +2767,6 @@ export type SearchResponse =
   | ErrorResponse
   | {
       success: true;
-      agent_hints?: string[];
       warning?: string;
       data: Document[];
       creditsUsed: number;
@@ -2780,7 +2774,6 @@ export type SearchResponse =
     }
   | {
       success: true;
-      agent_hints?: string[];
       warning?: string;
       data: import("../../lib/entities").SearchV2Response;
       creditsUsed: number;
@@ -2788,7 +2781,6 @@ export type SearchResponse =
     }
   | {
       success: true;
-      agent_hints?: string[];
       warning?: string;
       data: import("../../lib/entities").SearchV2Response;
       scrapeIds: {
