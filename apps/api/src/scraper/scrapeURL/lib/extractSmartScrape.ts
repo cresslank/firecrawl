@@ -414,10 +414,12 @@ export async function extractData({
     options: {
       ...extractOptions.options,
       schema: schemaToUse,
-      prompt: buildSmartScrapeWrapperPrompt(
-        extractOptions.options.prompt,
-        isSingleUrl,
-      ),
+      prompt: wrapForSmartScrape
+        ? buildSmartScrapeWrapperPrompt(
+            extractOptions.options.prompt,
+            isSingleUrl,
+          )
+        : extractOptions.options.prompt,
     },
   };
   // console.log("schema", schema);
