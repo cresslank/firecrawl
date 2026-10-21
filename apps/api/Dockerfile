@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22.23.3-trixie-slim@sha256:b26b04c123d9ff8ab646ceb18b9d75a1173acf64b9a401094b906d27b29338d4 AS base
+FROM node:22.23.4-trixie-slim@sha256:817bd9409161864cc85fcda5febd87a26f2d47c9fe5af355d327aeddfa11602c AS base
 
 # This network/CDN blackholes HTTP requests with Debian's default
 # `Debian APT-HTTP/1.3` User-Agent. Pin a generic UA so image rebuilds can
@@ -16,7 +16,7 @@ RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
 FROM rust:1.98.1-slim@sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7 AS rust-toolchain
 
 # Build Go shared library
-FROM golang:1.26.9-trixie@sha256:f89535b7caea67fa9ff0ba009894bff8f3be915e49cb635477c8ce04e045db5d AS go-build
+FROM golang:1.26.10-trixie@sha256:909771fef53e3dcb0950255f0c9a8b4728c3b841e61509c7b29b098de7ee02d4 AS go-build
 ENV GOMAXPROCS=2 GOFLAGS=-p=2
 WORKDIR /app
 COPY sharedLibs/go-html-to-md ./sharedLibs/go-html-to-md

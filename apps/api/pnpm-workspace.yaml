@@ -91,7 +91,7 @@ overrides:
   "proxy-addr@<2.0.8": "2.0.8"
   "source-map-js@<1.2.2": "1.2.2"
   "@babel/core@>=7.0.0 <7.29.6": "7.29.7"
-  "follow-redirects@<1.16.0": ">=1.16.0 <2.0.0"
+  "follow-redirects@<1.16.1": ">=1.16.1 <2.0.0"
   "uuid@<11.1.1": "11.1.1"
   "js-cookie@<3.0.7": "3.0.7"
   # GHSA-pqg4-j6r4-53mv: fixed in 1.11.0.
