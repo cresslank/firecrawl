@@ -161,12 +161,20 @@ services:
     networks:
       - backend
     command: rabbitmq-server
+    environment:
+      # Erlang schedulers spin after each task by default. Turn that off for
+      # the broker and for the CLI the health check starts.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
+      RABBITMQ_CTL_ERL_ARGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
     healthcheck:
+      # Each check boots a CLI Erlang VM (about 0.3 s of CPU). Keep the old
+      # 5 s probe while starting, then probe every 30 s.
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 60s
+      start_interval: 5s
     logging:
       driver: "json-file"
       options:
