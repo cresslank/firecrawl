@@ -134,8 +134,8 @@ services:
     memswap_limit: 8G
 
   redis:
-    # Build a minimal derivative so fixable Alpine package findings are closed
-    # without waiting for the official Redis image to be republished.
+    # Redis 8.8.3 closes CVE-2026-25243. RESTORE stays disabled on the
+    # command that actually runs: Compose overrides the image CMD.
     image: firecrawl-redis
     build:
       context: apps/redis
@@ -144,11 +144,17 @@ services:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
     # replace the local Redis build with a reviewed, immutable Valkey image pin.
     # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    # image: valkey/valkey:<tag>-alpine@sha256:<digest>
+    # image: valkey/valkey:<tag>@sha256:<digest>
 
     networks:
       - backend
-    command: redis-server --bind 0.0.0.0
+    # Official entrypoint drops root and chowns /data unless these are set.
+    # The retained volume is root-owned; keep that owner.
+    user: root
+    environment:
+      SKIP_DROP_PRIVS: "1"
+      SKIP_FIX_PERMS: "1"
+    command: ["redis-server", "--bind", "0.0.0.0", "--rename-command", "RESTORE", ""]
     logging:
       driver: "json-file"
       options:
@@ -157,7 +163,7 @@ services:
         compress: "true"
 
   rabbitmq:
-    image: rabbitmq:4.3.6-management@sha256:8dd6e3570ddaa2ef82a6c3a8950e79c1f73893adfbdddbc374fc1f1ac8a0f5dd
+    image: rabbitmq:4.3.7-management@sha256:79fb281ef7e0a15e3c5e0e12e66e944cebbf14a129493ef464369abd2c48d01a
     networks:
       - backend
     command: rabbitmq-server
