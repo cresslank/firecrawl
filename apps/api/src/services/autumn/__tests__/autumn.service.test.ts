@@ -100,6 +100,15 @@ vi.mock("../client", () => ({
   },
 }));
 
+// An unanswered firebill track is handed to a Redis-backed retry queue; no
+// Redis here, so the hand-off is accepted and dropped.
+const { retryQueueAdd } = vi.hoisted(() => ({
+  retryQueueAdd: vi.fn(async (_name: string, _data: unknown) => undefined),
+}));
+vi.mock("../../queue-service", () => ({
+  getFirebillTrackRetryQueue: () => ({ add: retryQueueAdd }),
+}));
+
 vi.mock("../../../db/connection", () => ({
   get dbRr() {
     return makeDbStub(state.gatewayStubRow, state.gatewayStubThrows);
@@ -124,6 +133,7 @@ import {
 import {
   autumnCustomerGetOrCreateTotal,
   autumnEntityCreatedInlineTotal,
+  billingRouteTotal,
 } from "../metrics";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +142,15 @@ import {
 
 function makeService() {
   return new AutumnService();
+}
+
+async function routeCount(route: string, operation: string): Promise<number> {
+  const { values } = await billingRouteTotal.get();
+  return (
+    values.find(
+      v => v.labels.route === route && v.labels.operation === operation,
+    )?.value ?? 0
+  );
 }
 
 function makeEntity(usage: number) {
@@ -1170,6 +1189,33 @@ describe("firebill routing", () => {
     });
   });
 
+  it.each([
+    ["trackCredits", 4, "track"],
+    ["refundCredits", 4, "refund"],
+  ] as const)(
+    "%s carries durableRetry through to firebill's retry hand-off",
+    async (method, value, name) => {
+      state.configRef = firebillConfig();
+      mockFetch.mockRejectedValue(new Error("timeout"));
+      const svc = makeService();
+      const call = (durableRetry?: boolean) =>
+        svc[method]({
+          teamId: "team-1",
+          orgId: "org-1",
+          value,
+          idempotencyKey: `fc:${name}:test:1`,
+          ...(durableRetry === undefined ? {} : { durableRetry }),
+        });
+
+      await expect(call(false)).resolves.toBe(false);
+      expect(retryQueueAdd).not.toHaveBeenCalled();
+
+      await expect(call()).resolves.toBe(false);
+      expect(retryQueueAdd).toHaveBeenCalledTimes(1);
+      expect(retryQueueAdd.mock.calls[0]![0]).toBe(name);
+    },
+  );
+
   // The gate, not the charge. Before this branch existed checkCredits asked
   // Autumn about the ghost's balance alone — and a gateway ghost is designed to
   // spend credits it does not have, so it 402'd exactly the requests the
@@ -1236,7 +1282,11 @@ describe("firebill routing", () => {
 
     // 500 is the funder's pool. Straight to Autumn this would have been the
     // ghost's own balance, and a drained ghost would have been a 402.
-    expect(result).toEqual({ allowed: true, remaining: 500 });
+    expect(result).toEqual({
+      allowed: true,
+      remaining: 500,
+      gatewayProvisioned: true,
+    });
     expect(mockCheck).not.toHaveBeenCalled();
     expect(String(mockFetch.mock.calls[0][0])).toBe(
       "http://firebill.test/v1/check",
@@ -2066,14 +2116,76 @@ describe("firebill routing", () => {
     expect(body.idempotency_key).toBe("fc:finalize:release:monitor_check-1");
   });
 
-  it("finalizes directly in Autumn when no teamId is supplied", async () => {
+  // The monitor scheduler and runner and Alexandria pass no team when the org
+  // cannot be named. Those settles used to be the last direct Autumn writes.
+  it("routes an orgless finalize through /v1/finalize, keyed like any other", async () => {
     state.configRef = firebillConfig();
     const svc = makeService();
+    const before = await routeCount("firebill", "finalize");
+
+    const settled = await svc.finalizeCreditsLock({
+      lockId: "monitor_check-1",
+      action: "confirm",
+      overrideValue: 7,
+      properties: { source: "monitorCheck", endpoint: "monitor" },
+    });
+
+    expect(settled).toBe(true);
+    expect(mockFinalize).not.toHaveBeenCalled();
+    const finalizeCalls = mockFetch.mock.calls.filter(([url]) =>
+      String(url).endsWith("/v1/finalize"),
+    );
+    expect(finalizeCalls).toHaveLength(1);
+    expect(JSON.parse(finalizeCalls[0]![1].body)).toEqual({
+      lock_id: "monitor_check-1",
+      action: "confirm",
+      override_value: 7,
+      properties: { source: "monitorCheck", endpoint: "monitor" },
+      idempotency_key: "fc:finalize:confirm:monitor_check-1",
+    });
+    expect(await routeCount("firebill", "finalize")).toBe(before + 1);
+  });
+
+  it("routes an orgless finalize through firebill even when no org is on the rollout", async () => {
+    state.configRef = { ...firebillConfig(), FIREBILL_ORG_IDS: [] };
+    const svc = makeService();
+
+    await svc.finalizeCreditsLock({ lockId: "lock-1", action: "release" });
+
+    expect(mockFinalize).not.toHaveBeenCalled();
+    const body = JSON.parse(mockFetch.mock.calls[0]![1].body);
+    expect(body.idempotency_key).toBe("fc:finalize:release:lock-1");
+  });
+
+  // Same contract as the direct settle it replaces: one attempt, and `false`
+  // back to the caller when it did not land. No retry is added here.
+  it("answers false for an orgless finalize firebill did not take, after one attempt", async () => {
+    state.configRef = firebillConfig();
+    mockFetch.mockResolvedValue(new Response("nope", { status: 503 }));
+    const svc = makeService();
+
+    const settled = await svc.finalizeCreditsLock({
+      lockId: "lock-1",
+      action: "confirm",
+      overrideValue: 3,
+    });
+
+    expect(settled).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFinalize).not.toHaveBeenCalled();
+    expect(retryQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("finalizes an orgless lock directly in Autumn, and counts it, when firebill is not configured", async () => {
+    state.configRef = {};
+    const svc = makeService();
+    const before = await routeCount("direct", "finalize");
 
     await svc.finalizeCreditsLock({ lockId: "lock-1", action: "release" });
 
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockFinalize).toHaveBeenCalledTimes(1);
+    expect(await routeCount("direct", "finalize")).toBe(before + 1);
   });
 
   it("finalizes directly in Autumn when the team's org is NOT on the allowlist", async () => {

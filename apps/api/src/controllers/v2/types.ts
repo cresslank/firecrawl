@@ -311,7 +311,7 @@ const actionSchema = z.union([
   }),
   z.object({
     type: z.literal("scroll"),
-    direction: z.enum(["up", "down"]).optional().prefault("down"),
+    direction: z.enum(["up", "down"]).prefault("down"),
     selector: z.string().optional(),
   }),
   z.object({
@@ -413,7 +413,7 @@ const changeTrackingFormatWithOptions = z.strictObject({
       message: OPENAI_SCHEMA_ERROR_MESSAGE,
     })
     .superRefine(addStrictSchemaIssue),
-  modes: z.enum(["json", "git-diff"]).array().optional().prefault([]),
+  modes: z.enum(["json", "git-diff"]).array().prefault([]),
   tag: z.string().or(z.null()).prefault(null),
 });
 
@@ -814,7 +814,6 @@ const scrapeOptionFields = z.strictObject({
           z.strictObject({ type: z.literal("video") }),
         ])
         .array()
-        .optional()
         .prefault([{ type: "markdown" }]),
     )
     .refine(x => {
@@ -1089,7 +1088,7 @@ const extractOptions = z
     allowExternalLinks: z.boolean().prefault(false),
     enableWebSearch: z.boolean().prefault(false),
     scrapeOptions: baseScrapeOptions.optional(),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     urlTrace: z.boolean().prefault(false),
     timeout: z.int().positive().min(1000).optional(),
@@ -1194,7 +1193,7 @@ export const agentRequestSchema = z
           });
         }
       }),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     maxCredits: z.number().optional(),
     strictConstrainToURLs: z.boolean().optional(),
@@ -1213,6 +1212,7 @@ export const agentRequestSchema = z
     mode: z.enum(["extract", "chat"]).optional(),
     exchange: agentExchangeSchema.optional(),
     location: countryLocationSchema.optional(),
+    safe: z.boolean().optional(),
     zeroDataRetention: z.boolean().optional(),
   })
   // spark-1 is retired and spark-2 is the default. The spark-1 preset names
@@ -1228,7 +1228,7 @@ export type AgentRequest = z.infer<typeof agentRequestSchema>;
 
 const scrapeRequestSchemaBase = baseScrapeOptions.safeExtend({
   url: URL,
-  origin: z.string().optional().prefault("api"),
+  origin: z.string().prefault("api"),
   integration: integrationSchema.optional().transform(val => val || null),
   zeroDataRetention: z.boolean().optional(),
   domainTools: z.boolean().optional(),
@@ -1239,6 +1239,7 @@ const scrapeRequestSchemaBase = baseScrapeOptions.safeExtend({
       requestId: z.string(),
       shouldBill: z.boolean(),
       boostConcurrency: z.boolean().optional(),
+      hostedMcp: z.boolean().optional(),
     })
     .optional(),
 });
@@ -1287,7 +1288,7 @@ const uploadedParseFileSchema = z.custom<UploadedParseFile>(
 );
 
 const parseRequestSchemaBase = baseScrapeOptions.safeExtend({
-  origin: z.string().optional().prefault("api"),
+  origin: z.string().prefault("api"),
   integration: integrationSchema.optional().transform(val => val || null),
   zeroDataRetention: z.boolean().optional(),
   __agentInterop: z
@@ -1296,6 +1297,7 @@ const parseRequestSchemaBase = baseScrapeOptions.safeExtend({
       requestId: z.string(),
       shouldBill: z.boolean(),
       boostConcurrency: z.boolean().optional(),
+      hostedMcp: z.boolean().optional(),
     })
     .optional(),
   file: uploadedParseFileSchema,
@@ -1320,7 +1322,7 @@ export type ParseRequestInput = z.input<typeof parseRequestSchemaBase>;
 
 const batchScrapeRequestSchemaBase = baseScrapeOptions.safeExtend({
   urls: URL.array().min(1),
-  origin: z.string().optional().prefault("api"),
+  origin: z.string().prefault("api"),
   integration: integrationSchema.optional().transform(val => val || null),
   webhook: webhookSchema.optional(),
   appendToId: z.uuid().optional(),
@@ -1332,6 +1334,7 @@ const batchScrapeRequestSchemaBase = baseScrapeOptions.safeExtend({
       auth: z.string(),
       requestId: z.string(),
       shouldBill: z.boolean(),
+      hostedMcp: z.boolean().optional(),
     })
     .optional(),
 });
@@ -1345,7 +1348,7 @@ export const batchScrapeRequestSchema = strictWithMessage(
 const batchScrapeRequestSchemaNoURLValidationBase =
   baseScrapeOptions.safeExtend({
     urls: z.string().array().min(1),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     webhook: webhookSchema.optional(),
     appendToId: z.uuid().optional(),
@@ -1357,6 +1360,7 @@ const batchScrapeRequestSchemaNoURLValidationBase =
         auth: z.string(),
         requestId: z.string(),
         shouldBill: z.boolean(),
+        hostedMcp: z.boolean().optional(),
       })
       .optional(),
   });
@@ -1424,7 +1428,7 @@ type CrawlerOptions = z.infer<typeof crawlerOptions>;
 
 const crawlRequestSchemaBase = crawlerOptions.extend({
   url: URL,
-  origin: z.string().optional().prefault("api"),
+  origin: z.string().prefault("api"),
   integration: integrationSchema.optional().transform(val => val || null),
   scrapeOptions: baseScrapeOptions.prefault(() => baseScrapeOptions.parse({})),
   webhook: webhookSchema.optional(),
@@ -1469,7 +1473,7 @@ const mapRequestSchemaBase = crawlerOptions
   .omit({ sitemap: true, ignoreQueryParameters: true })
   .extend({
     url: URL,
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     includeSubdomains: z.boolean().prefault(true),
     ignoreQueryParameters: z.boolean().prefault(true),
@@ -1732,6 +1736,7 @@ export type AgentListResponse =
           // type release.
           model: "spark-1-pro" | "spark-1-mini" | "spark-2" | (string & {});
           effort?: "low" | "medium" | "high";
+          safe?: boolean;
           threadId?: string;
           threadTurn?: number;
           zeroDataRetention?: boolean;
@@ -1892,6 +1897,7 @@ export type AgentStatusResponse =
       stopReason?: "credit_limit_reached";
       model?: "spark-1-pro" | "spark-1-mini" | "spark-2";
       effort?: "low" | "medium" | "high";
+      safe?: boolean;
       expiresAt: string;
       creditsUsed?: number;
       threadId?: string;
@@ -1911,6 +1917,7 @@ type AgentThreadRun = {
   urls?: string[];
   schema?: unknown;
   effort?: "low" | "medium" | "high";
+  safe?: boolean;
   status:
     | "processing"
     | "succeeded"
@@ -2030,7 +2037,7 @@ export interface MapDocument {
 
 // V2 Map Response with dictionary format
 export type MapResponse =
-  | ErrorResponse
+  | (ErrorResponse & { id?: string })
   | {
       success: true;
       id: string;
@@ -2117,6 +2124,10 @@ type AuthObject = {
   // Set only by authMiddleware from the raw request; controllers may re-parse
   // the body and drop `__agentInterop`, so read this instead.
   agentInterop?: AgentInteropStatus;
+  // Set only by authMiddleware, from the hosted MCP verification in
+  // supaAuthenticateUser, or from a trusted agent interop block for an agent
+  // run that verification started; never from an untrusted body or header.
+  hostedMcp?: boolean;
 };
 
 type Account = {
@@ -2154,6 +2165,8 @@ export type TeamFlags = {
   scrapeZDR?: "disabled" | "allowed" | "forced";
   searchZDR?: "disabled" | "allowed" | "forced" | "forced-zdr" | "forced-anon";
   zdrCost?: number;
+  /** How long an agent run's ZDR result is kept, in minutes. Unset is the default (24 hours). */
+  agentZdrRetentionMinutes?: number;
   checkRobotsOnScrape?: boolean;
   crawlTtlHours?: number;
   ipWhitelist?: boolean;
@@ -2173,6 +2186,9 @@ export type TeamFlags = {
   // The org's DPA (or partner amendment) restricts how its data may be
   // handled. Informational only: the API does not change behavior on it.
   dpaRestricted?: boolean;
+  // The org's contract bars training on its data: FirePDF never captures its
+  // documents (buildFirePdfTrainingCapture).
+  trainingRestricted?: boolean;
   organizationDataSourceAccess?: Record<
     string,
     {
@@ -2583,7 +2599,7 @@ const searchDomainSchema = z
 export const searchRequestSchema = z
   .strictObject({
     query: z.string(),
-    limit: z.int().positive().finite().max(100).optional().prefault(10),
+    limit: z.int().positive().finite().max(100).prefault(10),
     tbs: z.string().optional(),
     filter: z.string().optional(),
     sources: z
@@ -2602,7 +2618,6 @@ export const searchRequestSchema = z
           ]),
         ),
       ])
-      .optional()
       .prefault(["web"]),
     categories: z
       .preprocess(
@@ -2623,16 +2638,16 @@ export const searchRequestSchema = z
       .optional(),
     includeDomains: z.array(searchDomainSchema).optional(),
     excludeDomains: z.array(searchDomainSchema).optional(),
-    lang: z.string().optional().prefault("en"),
+    lang: z.string().prefault("en"),
     safe: z.boolean().optional(),
     enterprise: z.array(z.enum(["default", "anon", "zdr"])).optional(),
     country: z.string().optional(),
     location: z.string().optional(),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     timeout: z.int().positive().finite().prefault(60000),
-    ignoreInvalidURLs: z.boolean().optional().prefault(false),
-    asyncScraping: z.boolean().optional().prefault(false),
+    ignoreInvalidURLs: z.boolean().prefault(false),
+    asyncScraping: z.boolean().prefault(false),
     // Replace each result's snippet with query-relevant highlights pulled from
     // our index. When omitted, the caller integration and rollout cohort decide
     // whether generated highlights are returned or only run in shadow mode.
@@ -2671,7 +2686,6 @@ export const searchRequestSchema = z
                 screenshotFormatWithOptions,
               ])
               .array()
-              .optional()
               .prefault([]),
           )
           .refine(x => {
@@ -2684,6 +2698,7 @@ export const searchRequestSchema = z
         auth: z.string(),
         requestId: z.string(),
         shouldBill: z.boolean(),
+        hostedMcp: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2919,7 +2934,7 @@ export const searchFeedbackSchema = z
     valuableResults: valuableResultsSchema.optional(),
     missingContent: z.array(missingContentEntrySchema).max(20).optional(),
     querySuggestions: z.string().trim().max(2000).optional(),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
   })
   .refine(data => hasSubstantiveSearchFeedback(data), {
@@ -3011,7 +3026,7 @@ export const endpointFeedbackSchema = z
     url: searchFeedbackUrlSchema.optional(),
     pageNumbers: z.array(z.number().int().positive()).max(100).optional(),
     metadata: feedbackMetadataSchema.optional(),
-    origin: z.string().optional().prefault("api"),
+    origin: z.string().prefault("api"),
     integration: integrationSchema.optional().transform(val => val || null),
   })
   .refine(

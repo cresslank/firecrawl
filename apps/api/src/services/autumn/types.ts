@@ -48,6 +48,13 @@ export type TrackParams = {
    * like a crawl id (every page shares it: collision = underbilling).
    */
   idempotencyKey?: string;
+  /**
+   * firebill route only. `false` keeps an unanswered event out of the durable
+   * retry, for a caller that treats `false` as "did not happen" and releases
+   * something on it: a late retry landing would bill what it already undid.
+   * Defaults to retrying.
+   */
+  durableRetry?: boolean;
 };
 
 export type EnsureOrgProvisionedParams = {
@@ -105,12 +112,12 @@ export type FinalizeCreditsLockParams = {
   overrideValue?: number;
   properties?: Record<string, unknown>;
   /**
-   * The team the lock was taken for, and its org. Needed to route the settle
-   * through firebill for allowlisted orgs — a finalize carries no customer
-   * context of its own. When omitted, the settle goes directly to Autumn
-   * (which also works for a firebill-taken lock: the hold lives in Autumn
-   * either way, but loses firebill's durable retry). A caller that cannot name
-   * the org omits this, which is the route an unnameable org already took.
+   * The team the lock was taken for, and its org. Used to ask the rollout
+   * whether this org's settle goes through firebill — a finalize carries no
+   * customer context of its own. A caller that cannot name the org omits this,
+   * and the settle goes through firebill whenever firebill is configured: the
+   * lock id is all a settle needs, and the hold lives in Autumn whichever
+   * route took it.
    */
   team?: { teamId: string; orgId: string };
   /** For a gated run, the `operationToken` its lock handed back. */
@@ -131,6 +138,8 @@ export type TrackCreditsParams = {
   idempotencyKey?: string;
   /** See TrackParams.externalRequestId. */
   externalRequestId?: string | null;
+  /** See TrackParams.durableRetry. */
+  durableRetry?: boolean;
   /**
    * The team's org — the Autumn customer this usage bills against. The service
    * never looks it up: callers hold it already (a request's ACUC, a job's
