@@ -2,7 +2,7 @@ import { execFileSync } from "child_process";
 import { join } from "path";
 
 // Resolve the checkout, not an environment/event SHA which may describe another ref.
-export function resolveBuildSha(monorepoRoot: string): string {
+function resolveBuildSha(monorepoRoot: string): string {
   const sha = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
     cwd: monorepoRoot,
     encoding: "utf8",

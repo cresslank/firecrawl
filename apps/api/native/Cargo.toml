@@ -25,7 +25,7 @@ serde_json = "1.0.143"
 strsim = "0.11"
 texting_robots = "0.2.2"
 url = "2.5.7"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 tokio = "1.48.0"
 # Transitive dep (pdf-inspector -> unicode-normalization -> tinyvec). Pinned because
 # tinyvec 1.13.0 fails to compile (https://github.com/Lokathor/tinyvec/issues/225)
@@ -33,6 +33,10 @@ tokio = "1.48.0"
 tinyvec = ">=1.12, <1.13"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
+
+# Retire once a released anydoc uses zip >=9.0.5; see vendor/anydoc/LOCAL-PATCH.md.
+[patch.crates-io]
+anydoc = { path = "vendor/anydoc" }
 
 [build-dependencies]
 napi-build = "2"

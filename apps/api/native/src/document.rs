@@ -4,6 +4,10 @@ use roxmltree::Document;
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
+#[cfg(test)]
+#[path = "document_tests.rs"]
+mod tests;
+
 const MAX_OOXML_PART_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_OOXML_TOTAL_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_OOXML_PARTS: usize = 256;

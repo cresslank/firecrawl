@@ -11,7 +11,7 @@ const FEEDBACK_ROW_RETENTION_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_ROW_RETENTION_MARGIN_MS = 60 * 60 * 1000;
 const QUALIFIER = "v";
 
-export type FeedbackEndpoint = "search" | "scrape" | "parse" | "map";
+type FeedbackEndpoint = "search" | "scrape" | "parse" | "map";
 export type RefundClass =
   | "search"
   | "map"
