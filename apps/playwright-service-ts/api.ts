@@ -160,9 +160,13 @@ interface UrlModel {
 
 let browser: Browser;
 
+// Unset outside the container image: Playwright then uses its own browser.
+const chromiumExecutablePath = process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
+
 const initializeBrowser = async () => {
   browser = await chromium.launch({
     headless: true,
+    executablePath: chromiumExecutablePath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -542,6 +546,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
 const start = async () => {
   ssrfProxyPort = await startSSRFProxy();
   await initializeBrowser();
+  console.log(`Chromium ${browser.version()} (${chromiumExecutablePath ?? 'Playwright bundled'})`);
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
