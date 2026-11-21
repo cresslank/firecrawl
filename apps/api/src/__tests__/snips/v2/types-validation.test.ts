@@ -2218,5 +2218,97 @@ describe("V2 Types Validation", () => {
 
       expect(() => scrapeRequestSchema.parse(input)).toThrow();
     });
+
+    it("should accept valid check_selector, wait_for_network_idle, and wait_after_load", () => {
+      const parsed = scrapeRequestSchema.parse({
+        url: "https://example.com",
+        check_selector: "  .quote > span.text  ",
+        wait_for_network_idle: true,
+        wait_after_load: 250,
+        timeout: 10000,
+      });
+      expect(parsed.check_selector).toBe(".quote > span.text");
+      expect(parsed.wait_for_network_idle).toBe(true);
+      expect(parsed.wait_after_load).toBe(250);
+
+      const camel = scrapeRequestSchema.parse({
+        url: "https://example.com",
+        checkSelector: "#main",
+        waitForNetworkIdle: false,
+      });
+      expect(camel.checkSelector).toBe("#main");
+      expect(camel.waitForNetworkIdle).toBe(false);
+
+      const maxLen = scrapeRequestSchema.parse({
+        url: "https://example.com",
+        check_selector: "a".repeat(512),
+      });
+      expect(maxLen.check_selector?.length).toBe(512);
+
+      // Normalization of wait_after_load -> waitFor and idempotent re-parse
+      expect(parsed.waitFor).toBe(250);
+      const soParsed = scrapeOptions.parse({ wait_after_load: 250, timeout: 10000 });
+      expect(soParsed.waitFor).toBe(250);
+      expect(scrapeOptions.parse(soParsed).waitFor).toBe(250);
+
+      // Matching snake_case and camelCase values (after trim) pass cleanly
+      const matched = scrapeRequestSchema.parse({
+        url: "https://example.com",
+        check_selector: "  #ready ",
+        checkSelector: "#ready",
+        wait_for_network_idle: true,
+        waitForNetworkIdle: true,
+        wait_after_load: 250,
+        waitFor: 250,
+      });
+      expect(matched.check_selector).toBe("#ready");
+      expect(matched.waitFor).toBe(250);
+
+      // changeTracking floor applies cleanly across wait_after_load and idempotent re-parse
+      const ct = scrapeOptions.parse({
+        formats: ["markdown", { type: "changeTracking" }],
+        wait_after_load: 250,
+      });
+      expect(ct.waitFor).toBe(5000);
+      expect(ct.wait_after_load).toBe(5000);
+      expect(scrapeOptions.parse(ct).wait_after_load).toBe(5000);
+
+      // Empty selector triggers exact empty message
+      expect(() =>
+        scrapeRequestSchema.parse({ url: "https://example.com", check_selector: "" }),
+      ).toThrow(/must not be empty/);
+    });
+
+    it("should reject invalid check_selector, wait_for_network_idle, wait_after_load, and alias conflicts", () => {
+      for (const bad of [
+        { check_selector: "" },
+        { check_selector: "   " },
+        { check_selector: "div\nspan" },
+        { check_selector: "div\rspan" },
+        { check_selector: "div\x00span" },
+        { check_selector: "div\tspan" },
+        { check_selector: "div#é" },
+        { check_selector: "a".repeat(513) },
+        { check_selector: "#a", checkSelector: "#b" },
+        { wait_for_network_idle: "true" },
+        { wait_for_network_idle: true, waitForNetworkIdle: false },
+        { wait_after_load: -1 },
+        { wait_after_load: 60001 },
+        { wait_after_load: 6000, timeout: 10000 },
+        { checkSelector: "" },
+        { checkSelector: "div\nspan" },
+        { checkSelector: "a".repeat(513) },
+        { wait_after_load: 1.5 },
+        { wait_after_load: 500, waitFor: 250 },
+        { check_selector: "  .quote  ", checkSelector: ".other" },
+      ]) {
+        expect(() =>
+          scrapeRequestSchema.parse({
+            url: "https://example.com",
+            ...bad,
+          } as any),
+        ).toThrow();
+      }
+    });
   });
 });

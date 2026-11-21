@@ -332,7 +332,7 @@ export async function scrapeController(
       const timeout = req.body.timeout;
 
       const totalWait =
-        (req.body.waitFor ?? 0) +
+        (req.body.wait_after_load ?? req.body.waitFor ?? 0) +
         (req.body.actions ?? []).reduce(
           (a, x) => (x.type === "wait" ? (x.milliseconds ?? 0) : 0) + a,
           0,
@@ -530,7 +530,10 @@ export async function scrapeController(
             });
           }
 
-          if (e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED") {
+          if (
+            e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED" ||
+            e.code === "SCRAPE_PLAYWRIGHT_BAD_REQUEST"
+          ) {
             setSpanAttributes(span, {
               "scrape.status_code": 400,
             });

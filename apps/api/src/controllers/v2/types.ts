@@ -850,6 +850,29 @@ const scrapeOptionFields = z.strictObject({
   onlyCleanContent: z.boolean().prefault(false),
   timeout: z.int().positive().min(1000).optional(),
   waitFor: z.int().nonnegative().max(60000).prefault(0),
+  wait_after_load: z.int().nonnegative().max(60000).optional(),
+  check_selector: z
+    .string()
+    .max(512, "check_selector must be at most 512 bytes")
+    .refine(
+      val => /^[\x20-\x7e]*$/.test(val),
+      "check_selector must be printable ASCII without control characters",
+    )
+    .transform(val => val.trim())
+    .refine(val => val.length > 0, "check_selector must not be empty")
+    .optional(),
+  checkSelector: z
+    .string()
+    .max(512, "checkSelector must be at most 512 bytes")
+    .refine(
+      val => /^[\x20-\x7e]*$/.test(val),
+      "checkSelector must be printable ASCII without control characters",
+    )
+    .transform(val => val.trim())
+    .refine(val => val.length > 0, "checkSelector must not be empty")
+    .optional(),
+  wait_for_network_idle: z.boolean().optional(),
+  waitForNetworkIdle: z.boolean().optional(),
   mobile: z.boolean().prefault(false),
   parsers: parsersSchema.optional(),
   actions: actionsSchema.optional(),
@@ -905,16 +928,50 @@ const baseScrapeOptions = scrapeOptionFields
         "checkPromptInjection scans page markdown and cannot be used with the rawBase64 format.",
       path: ["checkPromptInjection"],
     },
+  )
+  .refine(
+    options =>
+      options.check_selector === undefined ||
+      options.checkSelector === undefined ||
+      options.check_selector === options.checkSelector,
+    {
+      message: "Conflicting check_selector and checkSelector values.",
+      path: ["check_selector"],
+    },
+  )
+  .refine(
+    options =>
+      options.wait_for_network_idle === undefined ||
+      options.waitForNetworkIdle === undefined ||
+      options.wait_for_network_idle === options.waitForNetworkIdle,
+    {
+      message:
+        "Conflicting wait_for_network_idle and waitForNetworkIdle values.",
+      path: ["wait_for_network_idle"],
+    },
+  )
+  .refine(
+    options =>
+      options.wait_after_load === undefined ||
+      options.waitFor === 0 ||
+      options.wait_after_load === options.waitFor,
+    {
+      message: "Conflicting wait_after_load and waitFor values.",
+      path: ["wait_after_load"],
+    },
   );
 
 type ScrapeOptionsBase = z.infer<typeof baseScrapeOptions>;
 
 const waitForRefine = (obj?: ScrapeOptionsBase): boolean => {
-  if (obj && obj.waitFor && obj.timeout) {
+  if (obj && obj.timeout) {
     if (typeof obj.timeout !== "number" || obj.timeout <= 0) {
       return false;
     }
-    return obj.waitFor <= obj.timeout / 2;
+    const effectiveWait = obj.wait_after_load ?? obj.waitFor;
+    if (effectiveWait) {
+      return effectiveWait <= obj.timeout / 2;
+    }
   }
   return true;
 };
@@ -971,6 +1028,9 @@ const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
   if (!obj) return obj as T extends undefined ? undefined : T;
   // Handle timeout
   let result = liftCheckPromptInjection(applyScrapeOptionsDefaults(obj));
+  if (obj.wait_after_load !== undefined && result.waitFor !== obj.wait_after_load) {
+    result = { ...result, waitFor: obj.wait_after_load };
+  }
   if (
     obj.formats.find(x => typeof x === "object" && x.type === "json") &&
     obj.timeout === 30000
@@ -982,8 +1042,16 @@ const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
     x => typeof x === "object" && x.type === "changeTracking",
   );
 
-  if (changeTracking && (obj.waitFor === undefined || obj.waitFor < 5000)) {
-    result = { ...result, waitFor: 5000 };
+  if (
+    changeTracking &&
+    ((obj.wait_after_load ?? obj.waitFor) === undefined ||
+      (obj.wait_after_load ?? obj.waitFor) < 5000)
+  ) {
+    result = {
+      ...result,
+      waitFor: 5000,
+      ...(obj.wait_after_load !== undefined ? { wait_after_load: 5000 } : {}),
+    };
   }
 
   if (changeTracking && obj.timeout === 30000) {
@@ -1019,19 +1087,19 @@ const extractTransformRequired = <T extends ScrapeOptionsBase>(obj: T): T => {
   return extractTransformImpl(obj)! as T;
 };
 
+const actionsWaitRefine = (obj: ScrapeOptionsBase): boolean => {
+  if (!obj.actions) return true;
+  return (
+    calculateTotalWaitTime(obj.actions, obj.wait_after_load ?? obj.waitFor) <=
+    ACTIONS_MAX_WAIT_TIME * 1000
+  );
+};
+const actionsWaitRefineOpts = {
+  message: `Total wait time (waitFor + wait actions) cannot exceed ${ACTIONS_MAX_WAIT_TIME} seconds`,
+};
+
 export const scrapeOptions = strictWithMessage(baseScrapeOptions)
-  .refine(
-    obj => {
-      if (!obj.actions) return true;
-      return (
-        calculateTotalWaitTime(obj.actions, obj.waitFor) <=
-        ACTIONS_MAX_WAIT_TIME * 1000
-      );
-    },
-    {
-      message: `Total wait time (waitFor + wait actions) cannot exceed ${ACTIONS_MAX_WAIT_TIME} seconds`,
-    },
-  )
+  .refine(actionsWaitRefine, actionsWaitRefineOpts)
   .refine(waitForRefine, waitForRefineOpts)
   .transform(extractTransformRequired);
 
@@ -1245,6 +1313,7 @@ const scrapeRequestSchemaBase = baseScrapeOptions.safeExtend({
 });
 
 export const scrapeRequestSchema = strictWithMessage(scrapeRequestSchemaBase)
+  .refine(actionsWaitRefine, actionsWaitRefineOpts)
   .refine(waitForRefine, waitForRefineOpts)
   .transform(extractTransformRequired);
 

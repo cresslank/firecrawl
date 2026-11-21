@@ -362,7 +362,10 @@ async function scrapeControllerInner(
         });
       }
 
-      if (e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED") {
+      if (
+        e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED" ||
+        e.code === "SCRAPE_PLAYWRIGHT_BAD_REQUEST"
+      ) {
         return res.status(400).json({
           success: false,
           code: e.code,

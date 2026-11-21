@@ -9,6 +9,28 @@ export class EngineError extends Error {
   }
 }
 
+export class PlaywrightBadRequestError extends TransportableError {
+  constructor(public reason: string) {
+    super("SCRAPE_PLAYWRIGHT_BAD_REQUEST", reason);
+  }
+
+  serialize() {
+    return {
+      ...super.serialize(),
+      reason: this.reason,
+    };
+  }
+
+  static deserialize(
+    _: ErrorCodes,
+    data: ReturnType<typeof this.prototype.serialize>,
+  ) {
+    const x = new PlaywrightBadRequestError(data.reason);
+    x.stack = data.stack;
+    return x;
+  }
+}
+
 export class XTwitterConfigurationError extends TransportableError {
   constructor() {
     super(

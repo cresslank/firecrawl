@@ -43,6 +43,7 @@ import {
   JsonExtractionContentTooLargeError,
   XTwitterConfigurationError,
   ExchangeRefusedError,
+  PlaywrightBadRequestError,
 } from "../scraper/scrapeURL/error";
 import { UnsafeDomainBlockedError } from "./threat-protection/error";
 import {
@@ -84,6 +85,7 @@ const errorMap: Record<ErrorCodes, any> = {
   SCRAPE_LOCKDOWN_CACHE_MISS: LockdownMissError,
   SCRAPE_ACTION_ERROR: ActionError,
   SCRAPE_ACTIONS_NOT_SUPPORTED: ActionsNotSupportedError,
+  SCRAPE_PLAYWRIGHT_BAD_REQUEST: PlaywrightBadRequestError,
   SCRAPE_BRANDING_NOT_SUPPORTED: BrandingNotSupportedError,
   AGENT_INDEX_ONLY: AgentIndexOnlyError,
   SCRAPE_RACED_REDIRECT_ERROR: RacedRedirectError,
