@@ -61,6 +61,7 @@ import {
   BrandingNotSupportedError,
   XTwitterConfigurationError,
   ExchangeRefusedError,
+  PlaywrightBadRequestError,
 } from "./error";
 import { ScrapeRetryTracker } from "./retryTracker";
 import { executeTransformers } from "./transformers";
@@ -285,7 +286,7 @@ export type Meta = {
   threatDecisions: ThreatDecision[];
 };
 
-function buildFeatureFlags(
+export function buildFeatureFlags(
   url: string,
   options: ScrapeOptions,
   internalOptions: InternalOptions,
@@ -323,8 +324,15 @@ function buildFeatureFlags(
     flags.add("video");
   }
 
-  if (options.waitFor !== 0) {
+  const effectiveWaitFor = options.wait_after_load ?? options.waitFor ?? 0;
+  if (effectiveWaitFor !== 0) {
     flags.add("waitFor");
+  }
+  if (options.check_selector ?? options.checkSelector) {
+    flags.add("checkSelector");
+  }
+  if ((options.wait_for_network_idle ?? options.waitForNetworkIdle) === true) {
+    flags.add("waitForNetworkIdle");
   }
 
   if (internalOptions.atsv) {
@@ -1035,6 +1043,7 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
               error.error instanceof AgentIndexOnlyError ||
               error.error instanceof XTwitterConfigurationError ||
               error.error instanceof ExchangeRefusedError ||
+              error.error instanceof PlaywrightBadRequestError ||
               error.error instanceof ThirdPartyDataTermsRequiredError
             ) {
               throw error.error;

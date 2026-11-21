@@ -108,6 +108,8 @@ const engines: Engine[] = [
 const featureFlags = [
   "actions",
   "waitFor",
+  "checkSelector",
+  "waitForNetworkIdle",
   "screenshot",
   "screenshot@fullScreen",
   "pdf",
@@ -134,6 +136,8 @@ const featureFlagOptions: {
 } = {
   actions: { priority: 20 },
   waitFor: { priority: 1 },
+  checkSelector: { priority: 20 },
+  waitForNetworkIdle: { priority: 20 },
   screenshot: { priority: 10 },
   "screenshot@fullScreen": { priority: 10 },
   pdf: { priority: 100 },
@@ -273,6 +277,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 2000,
   },
@@ -295,6 +301,8 @@ const engineOptions: {
       stealthProxy: true,
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 1000, // index should always be tried first
   },
@@ -317,6 +325,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: true,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 50,
   },
@@ -339,6 +349,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: true,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 45,
   },
@@ -361,6 +373,8 @@ const engineOptions: {
       stealthProxy: true,
       branding: false,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -1,
   },
@@ -383,6 +397,8 @@ const engineOptions: {
       stealthProxy: true,
       branding: true,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -2,
   },
@@ -405,6 +421,8 @@ const engineOptions: {
       stealthProxy: true,
       branding: true,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -5,
   },
@@ -427,6 +445,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: false,
+      checkSelector: true,
+      waitForNetworkIdle: true,
     },
     quality: 20,
   },
@@ -449,6 +469,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 10,
   },
@@ -471,6 +493,8 @@ const engineOptions: {
       stealthProxy: true,
       branding: false,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -15,
   },
@@ -493,6 +517,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: false,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 5,
   },
@@ -520,6 +546,8 @@ const engineOptions: {
       stealthProxy: true, // kinda...
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -20,
   },
@@ -542,6 +570,8 @@ const engineOptions: {
       stealthProxy: true, // kinda...
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -20,
   },
@@ -564,6 +594,8 @@ const engineOptions: {
       stealthProxy: true, // kinda...
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: -20,
   },
@@ -586,6 +618,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 500, // below index (1000) so cache is tried first, above fire-engine (50)
   },
@@ -608,6 +642,8 @@ const engineOptions: {
       stealthProxy: false,
       branding: false,
       disableAdblock: true,
+      checkSelector: false,
+      waitForNetworkIdle: false,
     },
     quality: 1500,
   },
@@ -641,7 +677,9 @@ export function shouldUseIndex(meta: Meta) {
     !(
       config.INDEX_SKIP_ON_PDF_REFRESH && getPDFRefresh(meta.options.parsers)
     ) &&
-    !hasCustomRequestContext(meta.options)
+    !hasCustomRequestContext(meta.options) &&
+    !(meta.options.check_selector ?? meta.options.checkSelector) &&
+    (meta.options.wait_for_network_idle ?? meta.options.waitForNetworkIdle) !== true
   );
 }
 

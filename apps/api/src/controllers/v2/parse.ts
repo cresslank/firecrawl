@@ -198,6 +198,13 @@ function getUnsupportedParseOptionError(reqBody: ParseRequest): string | null {
     return "Parse uploads do not support waitFor.";
   }
 
+  if (
+    (reqBody.check_selector ?? reqBody.checkSelector) !== undefined ||
+    (reqBody.wait_for_network_idle ?? reqBody.waitForNetworkIdle) === true
+  ) {
+    return "Parse uploads do not support check_selector or wait_for_network_idle.";
+  }
+
   if (reqBody.location !== undefined) {
     return "Parse uploads do not support location overrides.";
   }
@@ -641,7 +648,10 @@ export async function parseController(
             });
           }
 
-          if (e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED") {
+          if (
+            e.code === "SCRAPE_ACTIONS_NOT_SUPPORTED" ||
+            e.code === "SCRAPE_PLAYWRIGHT_BAD_REQUEST"
+          ) {
             setSpanAttributes(span, {
               "parse.status_code": 400,
             });
